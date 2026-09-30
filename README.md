@@ -1,0 +1,14 @@
+# IoT Device Monitor
+
+這個 repository 會從 ASP.NET Core MVC 練習專案，分階段演進為完整的 IoT 設備監控系統。
+
+目前採用人工審查閘門：AI 每完成一個階段就必須停止，由使用者閱讀程式碼、確認並自行提交 Git commit，之後才能開始下一階段。
+
+## 協作文件
+
+- AI 工作規範：[`AGENTS.md`](AGENTS.md)
+- 實作順序與驗收條件：[`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md)
+- 目前進度與交接資訊：[`docs/PROGRESS.md`](docs/PROGRESS.md)
+
+目前仍是初始 ASP.NET Core MVC 範本。功能、啟動方式與架構會隨階段實作逐步補充。
+
