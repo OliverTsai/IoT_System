@@ -9,6 +9,6 @@
 - AI 工作規範：[`AGENTS.md`](AGENTS.md)
 - 實作順序與驗收條件：[`docs/IMPLEMENTATION_PLAN.md`](docs/IMPLEMENTATION_PLAN.md)
 - 目前進度與交接資訊：[`docs/PROGRESS.md`](docs/PROGRESS.md)
+- 本機基礎設施操作：[`docs/LOCAL_DEVELOPMENT.md`](docs/LOCAL_DEVELOPMENT.md)
 
 目前仍是初始 ASP.NET Core MVC 範本。功能、啟動方式與架構會隨階段實作逐步補充。
-
