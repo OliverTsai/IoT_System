@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { RouterLink } from "vue-router";
 import { ApiError, apiClient } from "../api/client";
 import type { DeviceDetails, Telemetry } from "../api/types";
@@ -7,6 +7,7 @@ import MetricCard from "../components/MetricCard.vue";
 import StatusBadge from "../components/StatusBadge.vue";
 import TelemetryChart from "../components/TelemetryChart.vue";
 import UiState from "../components/UiState.vue";
+import { monitoringRealtime } from "../realtime/monitoring";
 import { authStore } from "../stores/auth";
 import { formatDateTime, formatRelativeTime } from "../utils/format";
 
@@ -20,6 +21,7 @@ const errorMessage = ref("");
 const notFound = ref(false);
 const statusError = ref("");
 const isAdmin = authStore.isAdmin;
+let unsubscribe: () => void = () => undefined;
 
 const latest = computed(() => device.value?.latestTelemetry ?? null);
 
@@ -63,7 +65,44 @@ async function toggleStatus(): Promise<void> {
   }
 }
 
+function handleTelemetry(telemetry: Telemetry): void {
+  if (!device.value || telemetry.deviceId !== device.value.id) return;
+
+  readings.value = [
+    telemetry,
+    ...readings.value.filter((reading) => reading.id !== telemetry.id),
+  ]
+    .sort((left, right) => {
+      const timeDifference = new Date(right.recordedAtUtc).getTime()
+        - new Date(left.recordedAtUtc).getTime();
+      return timeDifference || right.id - left.id;
+    })
+    .slice(0, 50);
+
+  const currentLatest = device.value.latestTelemetry;
+  const recordedAtDifference = currentLatest
+    ? new Date(telemetry.recordedAtUtc).getTime()
+      - new Date(currentLatest.recordedAtUtc).getTime()
+    : 1;
+  if (
+    !currentLatest ||
+    recordedAtDifference > 0 ||
+    (recordedAtDifference === 0 && telemetry.id > currentLatest.id)
+  ) {
+    device.value = { ...device.value, latestTelemetry: telemetry };
+  }
+}
+
 watch(() => props.deviceId, loadDevice, { immediate: true });
+
+onMounted(() => {
+  unsubscribe = monitoringRealtime.subscribe({
+    onTelemetry: handleTelemetry,
+    onResynchronize: () => void loadDevice(),
+  });
+});
+
+onBeforeUnmount(() => unsubscribe());
 </script>
 
 <template>

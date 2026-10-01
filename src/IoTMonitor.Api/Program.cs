@@ -1,10 +1,13 @@
 using System.Text.Json.Serialization;
+using IoTMonitor.Api.Alerts;
 using IoTMonitor.Api.Data;
 using IoTMonitor.Api.Domain.Entities;
 using IoTMonitor.Api.Domain.Enums;
 using IoTMonitor.Api.HealthChecks;
 using IoTMonitor.Api.Messaging.Mqtt;
+using IoTMonitor.Api.Realtime;
 using IoTMonitor.Api.Security;
+using IoTMonitor.Api.TelemetryProcessing;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
@@ -41,6 +44,21 @@ builder.Services.AddControllers(options =>
 builder.Services.AddOpenApi();
 builder.Services.AddProblemDetails();
 builder.Services.AddSingleton(TimeProvider.System);
+builder.Services
+    .AddSignalR()
+    .AddJsonProtocol(options =>
+        options.PayloadSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
+
+builder.Services
+    .AddOptions<AlertRulesOptions>()
+    .Bind(builder.Configuration.GetSection(AlertRulesOptions.SectionName))
+    .Validate(
+        options => options.HasValidThresholdOrder(),
+        "Alert warning thresholds must be inside their critical thresholds and minimums must be lower than maximums.")
+    .Validate(
+        options => options.HasSupportedValues(),
+        "Alert temperature thresholds must be between -100 and 200, and humidity thresholds between 0 and 100.")
+    .ValidateOnStart();
 
 builder.Services
     .AddOptions<ApplicationAuthenticationOptions>()
@@ -154,6 +172,9 @@ builder.Services.AddSingleton<MqttTelemetryMessageParser>();
 builder.Services.AddSingleton<ITelemetryDeduplicator, TelemetryDeduplicator>();
 builder.Services.AddSingleton<MqttTelemetryProcessor>();
 builder.Services.AddHostedService<MqttTelemetryBackgroundService>();
+builder.Services.AddSingleton<AlertRuleEvaluator>();
+builder.Services.AddSingleton<MonitoringEventPublisher>();
+builder.Services.AddScoped<TelemetryIngestionService>();
 
 builder.Services.AddDbContextPool<IoTMonitorDbContext>((serviceProvider, options) =>
 {
@@ -202,6 +223,7 @@ app.UseRateLimiter();
 app.UseAuthorization();
 
 app.MapControllers();
+app.MapHub<MonitoringHub>("/hubs/monitoring");
 
 app.MapHealthChecks(
     "/health/live",

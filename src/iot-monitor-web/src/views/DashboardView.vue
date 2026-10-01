@@ -1,19 +1,30 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { RouterLink } from "vue-router";
 import { ApiError, apiClient } from "../api/client";
-import type { Device, DeviceDetails } from "../api/types";
+import type { Alert, Device, DeviceDetails, Telemetry } from "../api/types";
 import MetricCard from "../components/MetricCard.vue";
 import StatusBadge from "../components/StatusBadge.vue";
 import UiState from "../components/UiState.vue";
+import { monitoringRealtime } from "../realtime/monitoring";
 import { authStore } from "../stores/auth";
 import { formatNumber, formatRelativeTime } from "../utils/format";
 
 const devices = ref<Device[]>([]);
 const featuredDevices = ref<DeviceDetails[]>([]);
 const totalCount = ref(0);
+const openAlerts = ref<Alert[]>([]);
+const openAlertCount = ref(0);
 const loading = ref(true);
 const errorMessage = ref("");
+let unsubscribe: () => void = () => undefined;
+let resyncTimer: ReturnType<typeof setTimeout> | null = null;
+
+const alertTypeLabels = {
+  TemperatureOutOfRange: "溫度超出範圍",
+  HumidityOutOfRange: "濕度超出範圍",
+  DeviceOffline: "設備離線",
+} as const;
 
 const activeCount = computed(() => devices.value.filter((device) => device.isActive).length);
 const latestReadings = computed(() =>
@@ -40,9 +51,14 @@ async function loadDashboard(): Promise<void> {
   loading.value = true;
   errorMessage.value = "";
   try {
-    const response = await apiClient.getDevices(1, 100);
+    const [response, alertResponse] = await Promise.all([
+      apiClient.getDevices(1, 100),
+      apiClient.getAlerts({ page: 1, pageSize: 3, acknowledged: false }),
+    ]);
     devices.value = response.items;
     totalCount.value = response.totalCount;
+    openAlerts.value = alertResponse.items;
+    openAlertCount.value = alertResponse.totalCount;
 
     const detailResults = await Promise.allSettled(
       response.items.slice(0, 6).map((device) => apiClient.getDevice(device.id)),
@@ -62,7 +78,71 @@ async function loadDashboard(): Promise<void> {
   }
 }
 
-onMounted(loadDashboard);
+function handleTelemetry(telemetry: Telemetry): void {
+  const index = featuredDevices.value.findIndex((device) => device.id === telemetry.deviceId);
+  if (index < 0) return;
+
+  const current = featuredDevices.value[index];
+  if (!current) return;
+  const recordedAtDifference = current.latestTelemetry
+    ? new Date(telemetry.recordedAtUtc).getTime()
+      - new Date(current.latestTelemetry.recordedAtUtc).getTime()
+    : 1;
+  if (current.latestTelemetry && (
+    recordedAtDifference < 0 ||
+    (recordedAtDifference === 0 && telemetry.id <= current.latestTelemetry.id)
+  )) {
+    return;
+  }
+
+  featuredDevices.value[index] = { ...current, latestTelemetry: telemetry };
+}
+
+function handleAlertRaised(alert: Alert): void {
+  if (alert.acknowledgedAtUtc || openAlerts.value.some((item) => item.id === alert.id)) return;
+  openAlertCount.value += 1;
+  openAlerts.value = [alert, ...openAlerts.value]
+    .sort((left, right) => {
+      const timeDifference = new Date(right.occurredAtUtc).getTime()
+        - new Date(left.occurredAtUtc).getTime();
+      return timeDifference || right.id - left.id;
+    })
+    .slice(0, 3);
+}
+
+function handleAlertAcknowledged(alert: Alert): void {
+  if (!openAlerts.value.some((item) => item.id === alert.id)) {
+    scheduleResynchronize();
+    return;
+  }
+
+  openAlertCount.value = Math.max(0, openAlertCount.value - 1);
+  openAlerts.value = openAlerts.value.filter((item) => item.id !== alert.id);
+  scheduleResynchronize();
+}
+
+function scheduleResynchronize(): void {
+  if (resyncTimer) clearTimeout(resyncTimer);
+  resyncTimer = setTimeout(() => {
+    resyncTimer = null;
+    void loadDashboard();
+  }, 150);
+}
+
+onMounted(() => {
+  unsubscribe = monitoringRealtime.subscribe({
+    onTelemetry: handleTelemetry,
+    onAlertRaised: handleAlertRaised,
+    onAlertAcknowledged: handleAlertAcknowledged,
+    onResynchronize: scheduleResynchronize,
+  });
+  void loadDashboard();
+});
+
+onBeforeUnmount(() => {
+  unsubscribe();
+  if (resyncTimer) clearTimeout(resyncTimer);
+});
 </script>
 
 <template>
@@ -197,24 +277,46 @@ onMounted(loadDashboard);
         </div>
       </section>
 
-      <section class="section-card alert-preview">
+      <section class="section-card dashboard-alerts">
+        <div class="section-card__header">
+          <div>
+            <span class="eyebrow">ACTIVE ALERTS</span>
+            <h2>待確認告警 <span v-if="openAlertCount">{{ openAlertCount }}</span></h2>
+          </div>
+          <RouterLink
+            class="text-link"
+            :to="{ name: 'alerts' }"
+          >
+            前往告警中心 <span>→</span>
+          </RouterLink>
+        </div>
+        <UiState
+          v-if="openAlerts.length === 0"
+          title="目前沒有待確認告警"
+          description="量測超出設定閾值時，告警會即時顯示。"
+        />
         <div
-          class="alert-preview__icon"
-          aria-hidden="true"
+          v-else
+          class="dashboard-alert-list"
         >
-          △
+          <RouterLink
+            v-for="alert in openAlerts"
+            :key="alert.id"
+            class="dashboard-alert-item"
+            :class="`dashboard-alert-item--${alert.severity.toLowerCase()}`"
+            :to="{ name: 'device-details', params: { deviceId: alert.deviceId } }"
+          >
+            <span
+              class="dashboard-alert-item__mark"
+              aria-hidden="true"
+            >!</span>
+            <span>
+              <strong>{{ alertTypeLabels[alert.type] }}</strong>
+              <small>{{ alert.deviceName }} · {{ formatRelativeTime(alert.occurredAtUtc) }}</small>
+            </span>
+            <span aria-hidden="true">→</span>
+          </RouterLink>
         </div>
-        <div>
-          <span class="eyebrow">ALERTS</span>
-          <h2>告警規則將於下一階段啟用</h2>
-          <p>目前不顯示模擬告警；階段 7 將由真實閾值規則及 API 提供資料。</p>
-        </div>
-        <RouterLink
-          class="button button--ghost"
-          :to="{ name: 'alerts' }"
-        >
-          了解狀態
-        </RouterLink>
       </section>
     </template>
   </div>

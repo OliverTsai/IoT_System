@@ -90,6 +90,21 @@ public sealed class SystemEndpointsTests(IoTMonitorApiFactory factory)
         Assert.True(paths.TryGetProperty("/api/auth/login", out _));
         Assert.True(paths.TryGetProperty("/api/auth/me", out _));
         Assert.True(paths.TryGetProperty("/api/users", out _));
+        Assert.True(paths.TryGetProperty("/api/alerts", out _));
+        Assert.True(paths.TryGetProperty("/api/alerts/{alertId}/acknowledge", out _));
+    }
+
+    [Fact]
+    public async Task MonitoringHub_NegotiationRequiresAuthentication()
+    {
+        using var client = factory.CreateHttpsClient();
+
+        var response = await client.PostAsync(
+            "/hubs/monitoring/negotiate?negotiateVersion=1",
+            null,
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
 
     [Fact]

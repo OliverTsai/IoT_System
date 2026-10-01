@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { ref } from "vue";
+import { onMounted, onUnmounted, ref } from "vue";
 import { RouterLink, RouterView, useRouter } from "vue-router";
 import { authStore } from "../stores/auth";
+import { monitoringRealtime } from "../realtime/monitoring";
 
 const router = useRouter();
 const menuOpen = ref(false);
@@ -16,6 +17,7 @@ const roleLabels = {
 async function signOut(): Promise<void> {
   signingOut.value = true;
   try {
+    await monitoringRealtime.stop().catch(() => undefined);
     await authStore.logout();
     await router.push({ name: "login" });
   } finally {
@@ -26,6 +28,14 @@ async function signOut(): Promise<void> {
 function closeMenu(): void {
   menuOpen.value = false;
 }
+
+onMounted(() => {
+  void monitoringRealtime.start();
+});
+
+onUnmounted(() => {
+  void monitoringRealtime.stop();
+});
 </script>
 
 <template>
@@ -104,11 +114,20 @@ function closeMenu(): void {
             aria-hidden="true"
           >△</span>
           告警
-          <span class="nav-soon">即將推出</span>
         </RouterLink>
       </nav>
 
       <div class="sidebar-footer">
+        <div
+          class="connection-status"
+          :class="`connection-status--${monitoringRealtime.state.status}`"
+          :title="monitoringRealtime.state.errorMessage"
+        >
+          <span aria-hidden="true" />
+          {{ monitoringRealtime.state.status === "connected" ? "即時連線正常" :
+            monitoringRealtime.state.status === "reconnecting" ? "重新連線中" :
+            monitoringRealtime.state.status === "connecting" ? "正在連線" : "即時連線中斷" }}
+        </div>
         <div class="account-card">
           <div
             class="avatar"

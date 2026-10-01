@@ -1,6 +1,8 @@
 using System.Net.Http.Json;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using IoTMonitor.Api.Contracts.Common;
+using IoTMonitor.Api.Contracts.Alerts;
 using IoTMonitor.Api.Contracts.Devices;
 using IoTMonitor.Api.Contracts.Telemetry;
 using IoTMonitor.Api.Domain.Enums;
@@ -17,6 +19,11 @@ public sealed class MqttTelemetryProcessorTests(PostgreSqlApiFactory factory)
         "Set IOT_MONITOR_TEST_CONNECTION_STRING to run PostgreSQL integration tests.";
 
     public static bool IsDatabaseConfigured => PostgreSqlApiFactory.IsConfigured;
+
+    private static readonly JsonSerializerOptions ResponseJsonOptions = new(JsonSerializerDefaults.Web)
+    {
+        Converters = { new JsonStringEnumConverter() }
+    };
 
     [Fact(Skip = DatabaseSkipReason, SkipUnless = nameof(IsDatabaseConfigured))]
     public async Task ProcessAsync_WithValidMessage_StoresTelemetryVisibleThroughApi()
@@ -68,6 +75,33 @@ public sealed class MqttTelemetryProcessorTests(PostgreSqlApiFactory factory)
             cancellationToken);
         Assert.NotNull(history);
         Assert.Equal(1, history.TotalCount);
+    }
+
+    [Fact(Skip = DatabaseSkipReason, SkipUnless = nameof(IsDatabaseConfigured))]
+    public async Task ProcessAsync_WithOutOfRangeReading_CreatesAlert()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var client = await factory.CreateAuthenticatedClientAsync(
+            UserRole.Admin,
+            cancellationToken);
+        var device = await CreateDeviceAsync(client, cancellationToken);
+        var processor = factory.Services.GetRequiredService<MqttTelemetryProcessor>();
+        var payload = CreatePayload(Guid.NewGuid(), 46m, 50m);
+
+        var result = await processor.ProcessAsync(
+            $"devices/{device.ExternalId}/telemetry",
+            payload,
+            cancellationToken);
+
+        Assert.Equal(TelemetryProcessingStatus.Stored, result.Status);
+        var alerts = await client.GetFromJsonAsync<PagedResponse<AlertResponse>>(
+            $"/api/alerts?deviceId={device.Id}&page=1&pageSize=10",
+            ResponseJsonOptions,
+            cancellationToken);
+        Assert.NotNull(alerts);
+        var alert = Assert.Single(alerts.Items);
+        Assert.Equal(AlertType.TemperatureOutOfRange, alert.Type);
+        Assert.Equal(AlertSeverity.Critical, alert.Severity);
     }
 
     [Fact(Skip = DatabaseSkipReason, SkipUnless = nameof(IsDatabaseConfigured))]

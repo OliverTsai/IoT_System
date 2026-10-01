@@ -98,6 +98,8 @@ MQTT 遙測接收預設停用；設定方式、topic、payload 與模擬器操�
 
 Cookie 登入、角色權限、Admin bootstrap 與 CSRF 操作請參考 [`AUTHENTICATION.md`](AUTHENTICATION.md)。除了文件列出的公開端點外，API 皆要求登入；所有會改變狀態的 request 還必須帶有效的 `X-CSRF-TOKEN`。
 
+告警閾值、告警 API、SignalR 事件與重連補抓策略請參考 [`ALERTS_REALTIME.md`](ALERTS_REALTIME.md)。
+
 ## 設備與遙測 API
 
 | Method | Path | 說明 |
@@ -109,6 +111,8 @@ Cookie 登入、角色權限、Admin bootstrap 與 CSRF 操作請參考 [`AUTHEN
 | `POST` | `/api/devices/{deviceId}/telemetry` | Admin／Operator 寫入溫度與濕度。 |
 | `GET` | `/api/devices/{deviceId}/telemetry/latest` | 已登入使用者取得最新一筆遙測。 |
 | `GET` | `/api/devices/{deviceId}/telemetry` | 已登入使用者依時間範圍分頁查詢遙測歷史。 |
+| `GET` | `/api/alerts` | 已登入使用者分頁篩選告警。 |
+| `PATCH` | `/api/alerts/{alertId}/acknowledge` | Admin／Operator 確認告警。 |
 
 列表端點的 `page` 從 1 開始，`pageSize` 允許 1 到 100。遙測歷史可以使用 ISO 8601 格式的 `fromUtc` 與 `toUtc`，範圍包含起訖時間。
 

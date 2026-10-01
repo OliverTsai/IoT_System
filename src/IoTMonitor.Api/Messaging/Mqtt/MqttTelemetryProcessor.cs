@@ -1,5 +1,5 @@
 using IoTMonitor.Api.Data;
-using IoTMonitor.Api.Domain.Entities;
+using IoTMonitor.Api.TelemetryProcessing;
 using Microsoft.EntityFrameworkCore;
 
 namespace IoTMonitor.Api.Messaging.Mqtt;
@@ -20,7 +20,6 @@ public sealed class MqttTelemetryProcessor(
     IServiceScopeFactory scopeFactory,
     MqttTelemetryMessageParser parser,
     ITelemetryDeduplicator deduplicator,
-    TimeProvider timeProvider,
     ILogger<MqttTelemetryProcessor> logger)
 {
     public async Task<TelemetryProcessingResult> ProcessAsync(
@@ -78,17 +77,14 @@ public sealed class MqttTelemetryProcessor(
 
         try
         {
-            var telemetry = new Telemetry
-            {
-                DeviceId = device.Id,
-                TemperatureCelsius = message.TemperatureCelsius,
-                HumidityPercent = message.HumidityPercent,
-                RecordedAtUtc = message.RecordedAtUtc,
-                ReceivedAtUtc = timeProvider.GetUtcNow().UtcDateTime
-            };
-
-            dbContext.Telemetry.Add(telemetry);
-            await dbContext.SaveChangesAsync(cancellationToken);
+            var telemetryIngestionService = scope.ServiceProvider
+                .GetRequiredService<TelemetryIngestionService>();
+            var result = await telemetryIngestionService.StoreAsync(
+                device,
+                message.TemperatureCelsius,
+                message.HumidityPercent,
+                message.RecordedAtUtc,
+                cancellationToken);
 
             logger.LogDebug(
                 "Stored MQTT telemetry {MessageId} for device {ExternalDeviceId}",
@@ -97,7 +93,7 @@ public sealed class MqttTelemetryProcessor(
             return new TelemetryProcessingResult(
                 TelemetryProcessingStatus.Stored,
                 "The MQTT telemetry was stored.",
-                telemetry.Id);
+                result.Telemetry.Id);
         }
         catch
         {

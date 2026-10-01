@@ -1,8 +1,8 @@
 using IoTMonitor.Api.Contracts.Common;
 using IoTMonitor.Api.Contracts.Telemetry;
 using IoTMonitor.Api.Data;
-using IoTMonitor.Api.Domain.Entities;
 using IoTMonitor.Api.Security;
+using IoTMonitor.Api.TelemetryProcessing;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -13,6 +13,7 @@ namespace IoTMonitor.Api.Controllers;
 [Route("api/devices/{deviceId:guid}/telemetry")]
 public sealed class DeviceTelemetryController(
     IoTMonitorDbContext dbContext,
+    TelemetryIngestionService telemetryIngestionService,
     TimeProvider timeProvider) : ControllerBase
 {
     [HttpPost]
@@ -36,27 +37,22 @@ public sealed class DeviceTelemetryController(
             return ValidationProblem(ModelState);
         }
 
-        if (!await dbContext.Devices.AnyAsync(
-                device => device.Id == deviceId,
-                cancellationToken))
+        var device = await dbContext.Devices.SingleOrDefaultAsync(
+            candidate => candidate.Id == deviceId,
+            cancellationToken);
+        if (device is null)
         {
             return DeviceNotFound(deviceId);
         }
 
-        var telemetry = new Telemetry
-        {
-            DeviceId = deviceId,
-            TemperatureCelsius = request.TemperatureCelsius!.Value,
-            HumidityPercent = request.HumidityPercent!.Value,
-            RecordedAtUtc = recordedAtUtc.UtcDateTime,
-            ReceivedAtUtc = now.UtcDateTime
-        };
+        var result = await telemetryIngestionService.StoreAsync(
+            device,
+            request.TemperatureCelsius!.Value,
+            request.HumidityPercent!.Value,
+            recordedAtUtc.UtcDateTime,
+            cancellationToken);
 
-        dbContext.Telemetry.Add(telemetry);
-        await dbContext.SaveChangesAsync(cancellationToken);
-
-        var response = ToResponse(telemetry);
-        return CreatedAtAction(nameof(GetLatest), new { deviceId }, response);
+        return CreatedAtAction(nameof(GetLatest), new { deviceId }, result.Telemetry);
     }
 
     [HttpGet]
@@ -172,16 +168,5 @@ public sealed class DeviceTelemetryController(
     private static int CalculateTotalPages(int totalCount, int pageSize)
     {
         return (int)Math.Ceiling(totalCount / (double)pageSize);
-    }
-
-    private static TelemetryResponse ToResponse(Telemetry telemetry)
-    {
-        return new TelemetryResponse(
-            telemetry.Id,
-            telemetry.DeviceId,
-            telemetry.TemperatureCelsius,
-            telemetry.HumidityPercent,
-            telemetry.RecordedAtUtc,
-            telemetry.ReceivedAtUtc);
     }
 }

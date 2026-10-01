@@ -10,6 +10,8 @@ Eclipse Mosquitto ── devices/{externalDeviceId}/telemetry
         │ subscribe
         ▼
 IoTMonitor.Api BackgroundService ──► PostgreSQL ──► REST API
+              │                         │
+              └── 告警規則 ────────────┴──► SignalR ──► Vue
 ```
 
 API 的 MQTT 接收功能預設停用，避免沒有 broker 或本機秘密設定時影響一般 API 與測試。Mosquitto 必須先依照 [`LOCAL_DEVELOPMENT.md`](LOCAL_DEVELOPMENT.md) 啟動。

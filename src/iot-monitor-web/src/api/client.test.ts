@@ -73,4 +73,46 @@ describe("apiClient", () => {
     const retryOptions = fetchMock.mock.calls[3]?.[1];
     expect(new Headers(retryOptions?.headers).get("X-CSRF-TOKEN")).toBe("fresh-token");
   });
+
+  it("queries and acknowledges alerts through the protected API", async () => {
+    const alert = {
+      id: 8,
+      deviceId: "device-1",
+      deviceExternalId: "sensor-01",
+      deviceName: "Sensor 01",
+      type: "TemperatureOutOfRange",
+      severity: "Warning",
+      message: "Temperature is above the warning maximum.",
+      occurredAtUtc: "2026-10-01T10:00:00Z",
+      acknowledgedAtUtc: null,
+    };
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse({
+        items: [alert],
+        page: 1,
+        pageSize: 20,
+        totalCount: 1,
+        totalPages: 1,
+      }))
+      .mockResolvedValueOnce(jsonResponse({ token: "alert-csrf" }))
+      .mockResolvedValueOnce(jsonResponse({
+        ...alert,
+        acknowledgedAtUtc: "2026-10-01T10:01:00Z",
+      }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { apiClient } = await import("./client");
+    const result = await apiClient.getAlerts({ severity: "Warning", acknowledged: false });
+    const acknowledged = await apiClient.acknowledgeAlert(alert.id);
+
+    expect(result.totalCount).toBe(1);
+    expect(String(fetchMock.mock.calls[0]?.[0])).toContain(
+      "severity=Warning&acknowledged=false",
+    );
+    expect(acknowledged.acknowledgedAtUtc).not.toBeNull();
+    const acknowledgeOptions = fetchMock.mock.calls[2]?.[1];
+    expect(acknowledgeOptions?.method).toBe("PATCH");
+    expect(new Headers(acknowledgeOptions?.headers).get("X-CSRF-TOKEN")).toBe("alert-csrf");
+  });
 });

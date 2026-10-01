@@ -47,3 +47,22 @@ export interface CreateDeviceInput {
   externalId: string;
   name: string;
 }
+
+export type AlertType =
+  | "TemperatureOutOfRange"
+  | "HumidityOutOfRange"
+  | "DeviceOffline";
+
+export type AlertSeverity = "Information" | "Warning" | "Critical";
+
+export interface Alert {
+  id: number;
+  deviceId: string;
+  deviceExternalId: string;
+  deviceName: string;
+  type: AlertType;
+  severity: AlertSeverity;
+  message: string;
+  occurredAtUtc: string;
+  acknowledgedAtUtc: string | null;
+}

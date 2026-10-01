@@ -1,4 +1,7 @@
 import type {
+  Alert,
+  AlertSeverity,
+  AlertType,
   AuthenticatedUser,
   CreateDeviceInput,
   Device,
@@ -9,7 +12,7 @@ import type {
 } from "./types";
 
 const configuredBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "https://localhost:7080";
-const apiBaseUrl = configuredBaseUrl.replace(/\/$/, "");
+export const apiBaseUrl = configuredBaseUrl.replace(/\/$/, "");
 
 let csrfToken: string | null = null;
 let unauthorizedHandler: (() => void) | null = null;
@@ -178,5 +181,36 @@ export const apiClient = {
     return request<PagedResponse<Telemetry>>(
       `/api/devices/${encodeURIComponent(deviceId)}/telemetry?${search}`,
     );
+  },
+
+  getAlerts(
+    options: {
+      page?: number;
+      pageSize?: number;
+      deviceId?: string;
+      type?: AlertType;
+      severity?: AlertSeverity;
+      acknowledged?: boolean;
+    } = {},
+  ): Promise<PagedResponse<Alert>> {
+    const search = new URLSearchParams({
+      page: String(options.page ?? 1),
+      pageSize: String(options.pageSize ?? 20),
+    });
+    if (options.deviceId) search.set("deviceId", options.deviceId);
+    if (options.type) search.set("type", options.type);
+    if (options.severity) search.set("severity", options.severity);
+    if (options.acknowledged !== undefined) {
+      search.set("acknowledged", String(options.acknowledged));
+    }
+
+    return request<PagedResponse<Alert>>(`/api/alerts?${search}`);
+  },
+
+  acknowledgeAlert(alertId: number): Promise<Alert> {
+    return request<Alert>(`/api/alerts/${alertId}/acknowledge`, {
+      method: "PATCH",
+      csrf: true,
+    });
   },
 };

@@ -4,10 +4,10 @@
 
 ## 目前閘門
 
-- Current phase：`6 - Vue 3 RWD 儀表板`
+- Current phase：`7 - 告警與即時更新`
 - State：`awaiting_review`
-- Owner action：請審查階段 6 的登入流程、API client、權限顯示、設備頁面、趨勢圖與 RWD；確認後由使用者自行 commit，再明確指示開始階段 7。
-- Next phase：`7 - 告警與即時更新`
+- Owner action：使用者審查階段 7 的告警、SignalR 與 Vue 即時更新程式碼，確認後自行提交；AI 不得開始階段 8。
+- Next phase：`8 - 完整容器化、品質與作品集整理`
 
 狀態定義：
 
@@ -27,34 +27,34 @@
 | 3 | 設備與遙測 REST 垂直切片 | `accepted` |
 | 4 | MQTT 資料接收與設備模擬器 | `accepted` |
 | 5 | Authentication、Authorization 與安全基線 | `accepted` |
-| 6 | Vue 3 RWD 儀表板 | `awaiting_review` |
-| 7 | 告警與即時更新 | `not_started` |
+| 6 | Vue 3 RWD 儀表板 | `accepted` |
+| 7 | 告警與即時更新 | `awaiting_review` |
 | 8 | 完整容器化、品質與作品集整理 | `not_started` |
 
 ## 本階段完成內容
 
-- 建立 Vue 3、TypeScript、Vite 與 Vue Router 前端；正式相依只有 Vue 與 Vue Router，套件版本由 lockfile 固定。
-- 實作 Cookie Authentication 登入、登出、目前使用者恢復及受保護路由；前端不保存認證 token。
-- 建立共用 API client：跨 origin request 帶 Cookie、在記憶體管理 CSRF token、身分改變後刷新 token，並統一處理 Problem Details 與 401。
-- 建立總覽、分頁設備清單與設備明細；所有數值都讀取真實 API，沒有硬編碼設備或遙測 mock。
-- Admin 可建立設備及啟用／停用設備；Viewer、Operator 不顯示無權限的設備管理操作。
-- 設備明細提供最新量測、最近 50 筆溫濕度 SVG 趨勢圖與歷史表格。
-- 所有主要頁面處理 loading、empty、error、not found 與 session expired；版面支援桌面、平板與手機。
-- 告警頁明確顯示後端能力尚未啟用，不製造假告警；閾值、告警 API 與 SignalR 仍依計畫於階段 7 實作。
-- 建立 API client 與趨勢圖元件測試，並補上前端啟動、權限、安全注意事項及驗證文件。
+- 新增可由設定覆寫的溫度與濕度 Warning／Critical 閾值；等於邊界時安全，每筆量測每項指標最多產生一筆符合最高嚴重度的告警。
+- REST 與 MQTT 遙測共用同一個寫入服務，遙測及其告警在同一次資料庫交易中持久化，成功後才發布即時事件。
+- 實作告警分頁、設備／類型／嚴重度／確認狀態篩選，以及 Operator／Admin 可用的冪等告警確認 API；Viewer 維持唯讀。
+- 告警確認時間先正規化為 PostgreSQL 微秒精度，確保第一次與重複確認的 API 回應完全一致。
+- 建立需要登入的 SignalR Hub，發布 `TelemetryReceived`、`AlertRaised` 與 `AlertAcknowledged`；發布失敗不回滾已持久化資料。
+- Vue 加入 SignalR client、連線狀態與持續重試；初次連線或重連成功時以 REST 補抓，避免斷線期間永久遺漏資料。
+- 總覽、設備明細及告警中心會即時更新；前端依 ID 去重及依時間排序，告警頁提供篩選、分頁與依角色顯示確認操作。
+- 補上告警規則、REST／MQTT 告警流程、權限、SignalR negotiation、前端事件派送與 REST 補抓測試，以及完整操作文件。
+- 既有初始 migration 已包含 `alerts` 資料表，本階段不需要新增或執行 migration。
 
 ## 本階段驗證
 
+- [x] `dotnet format IoTMonitor.slnx --verify-no-changes --no-restore` 通過。
+- [x] `dotnet build IoTMonitor.slnx -c Release --no-restore` 成功：0 warnings、0 errors。
+- [x] 使用隔離的 PostgreSQL 測試資料庫執行 `dotnet test`：46 tests passed、0 failed、0 skipped；完成後確認沒有 `iot_monitor_tests_*` 資料庫殘留。
+- [x] 告警整合測試涵蓋安全量測、Critical 告警、查詢篩選、Viewer 禁止確認、Operator 確認與重複確認；MQTT 超標量測亦會產生告警。
 - [x] `npm run type-check` 通過。
 - [x] `npm run lint` 通過，0 errors、0 warnings。
-- [x] `npm run test` 通過：2 test files、5 tests passed。
-- [x] `npm run build` 通過：47 modules transformed，production assets 成功產生。
+- [x] `npm run test` 通過：3 test files、7 tests passed。
+- [x] `npm run build` 通過：75 modules transformed，production assets 成功產生。
 - [x] `npm audit` 通過：0 vulnerabilities。
-- [x] `dotnet build IoTMonitor.slnx -c Release --no-restore` 成功：0 warnings、0 errors。
-- [x] Vite 開發伺服器可於 `http://localhost:5173` 啟動，首頁 smoke request 回傳 200 與 app root。
-- [x] 以瀏覽器實際檢查登入頁的 1440 × 900 桌面版與 390 × 844 手機版，內容無溢出且表單可完整操作。
-- [x] API client 測試涵蓋登入前後 CSRF 刷新、Cookie credentials、401 通知及 CSRF 失效後單次重試。
-- [x] 趨勢圖測試涵蓋排序與折線輸出，以及資料不足狀態。
+- [x] 前端測試涵蓋 SignalR 遙測／告警事件派送、初次連線與重連後 REST 補抓，以及告警查詢與確認的 CSRF request。
 
 ## 已知事項與風險
 
@@ -66,10 +66,12 @@
 - Bootstrap Admin 預設停用且 repository 沒有預設密碼；首次本機登入前需依 `docs/AUTHENTICATION.md` 使用 User Secrets 建立 Admin，建立後立即移除 bootstrap password。
 - Auth 與 antiforgery Cookie 強制 Secure，本機登入流程必須使用 HTTPS；Vue 必須使用 credentials 並在登入後重新取得 CSRF token。
 - Cookie 加密依賴 ASP.NET Core Data Protection key；階段 8 容器化時必須持久化且保護 key ring，否則容器重建會使現有 Cookie 失效。
-- 尚未建立告警 API；目前的全域 Controller authorization 會先保護未來端點，告警確認的細部 policy 於階段 7 實作。
-- 前端告警頁目前只顯示能力說明；真實告警列表需等階段 7 的告警 API 完成。
+- 目前每一筆超標量測都會建立新告警，尚未合併為告警事件區間或加入冷卻時間；這是階段 7 的明確行為，實際產品可再依需求調整。
+- `DeviceOffline` 類型已保留，但尚未定義設備心跳期限，因此目前不會自動產生離線告警。
+- SignalR 目前使用單一 API 執行個體的 in-process Hub；若未來橫向擴充，需要加入 Redis 或受管 SignalR backplane。
 - 前端 production build 目前是靜態產物，尚無 Dockerfile 或反向代理設定；這些工作屬於階段 8。
-- 未設定 `IOT_MONITOR_TEST_CONNECTION_STRING` 時，17 個 PostgreSQL 整合測試會顯示為 skipped；完整測試指令已記錄於 `docs/API_DEVELOPMENT.md`。
+- 本階段已由自動測試驗證即時事件處理與重連補抓策略，但未使用真實登入帳號進行瀏覽器端的 SignalR 端對端操作；階段 8 的整套 smoke test 應補驗證此路徑。
+- 未設定 `IOT_MONITOR_TEST_CONNECTION_STRING` 時，20 個 PostgreSQL 整合測試會顯示為 skipped；完整測試指令已記錄於 `docs/API_DEVELOPMENT.md`。
 - 舊 `WebApplication2` 目錄只剩被 Git 忽略的 `bin`、`obj`、`*.user` 等本機產生物，不屬於新的 solution。
 
 ## 恢復工作檢查表
@@ -78,5 +80,5 @@
 
 1. 閱讀 `AGENTS.md` 與 `docs/IMPLEMENTATION_PLAN.md`。
 2. 執行 `git status --short --branch` 及 `git log -1 --oneline`。
-3. 若階段 6 尚未被使用者接受，只能修正階段 6 的審查意見，不得開始告警或 SignalR。
-4. 使用者審查並自行 commit 後，只有在收到明確指示時才能將階段 6 標為 `accepted` 並開始階段 7。
+3. 階段 7 目前為 `awaiting_review`；只能回答問題或修正階段 7 的審查意見，不得開始容器化或作品集整理。
+4. 使用者審查並自行 commit 後，只有在收到明確指示時才能將階段 7 標為 `accepted` 並開始階段 8。
