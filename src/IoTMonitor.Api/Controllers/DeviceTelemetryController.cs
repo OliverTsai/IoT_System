@@ -2,6 +2,8 @@ using IoTMonitor.Api.Contracts.Common;
 using IoTMonitor.Api.Contracts.Telemetry;
 using IoTMonitor.Api.Data;
 using IoTMonitor.Api.Domain.Entities;
+using IoTMonitor.Api.Security;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -14,6 +16,7 @@ public sealed class DeviceTelemetryController(
     TimeProvider timeProvider) : ControllerBase
 {
     [HttpPost]
+    [Authorize(Policy = SecurityPolicies.OperatorOrAdmin)]
     [ProducesResponseType<TelemetryResponse>(StatusCodes.Status201Created)]
     [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]

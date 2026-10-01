@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using IoTMonitor.Api.Contracts.Common;
 using IoTMonitor.Api.Contracts.Devices;
 using IoTMonitor.Api.Contracts.Telemetry;
+using IoTMonitor.Api.Domain.Enums;
 using IoTMonitor.Api.Tests.Infrastructure;
 using Microsoft.AspNetCore.Mvc;
 
@@ -19,8 +20,10 @@ public sealed class DeviceTelemetryEndpointsTests(PostgreSqlApiFactory factory)
     [Fact(Skip = DatabaseSkipReason, SkipUnless = nameof(IsDatabaseConfigured))]
     public async Task DeviceWorkflow_CreatesListsGetsAndUpdatesStatus()
     {
-        using var client = factory.CreateHttpsClient();
         var cancellationToken = TestContext.Current.CancellationToken;
+        using var client = await factory.CreateAuthenticatedClientAsync(
+            UserRole.Admin,
+            cancellationToken);
         var externalId = NewExternalId();
 
         var createResponse = await client.PostAsJsonAsync(
@@ -60,8 +63,10 @@ public sealed class DeviceTelemetryEndpointsTests(PostgreSqlApiFactory factory)
     [Fact(Skip = DatabaseSkipReason, SkipUnless = nameof(IsDatabaseConfigured))]
     public async Task CreateDevice_WithDuplicateExternalId_ReturnsConflictProblemDetails()
     {
-        using var client = factory.CreateHttpsClient();
         var cancellationToken = TestContext.Current.CancellationToken;
+        using var client = await factory.CreateAuthenticatedClientAsync(
+            UserRole.Admin,
+            cancellationToken);
         var request = new CreateDeviceRequest(NewExternalId(), "Packing line sensor");
 
         var firstResponse = await client.PostAsJsonAsync(
@@ -84,8 +89,10 @@ public sealed class DeviceTelemetryEndpointsTests(PostgreSqlApiFactory factory)
     [Fact(Skip = DatabaseSkipReason, SkipUnless = nameof(IsDatabaseConfigured))]
     public async Task DeviceEndpoints_WithUnknownDevice_ReturnNotFoundProblemDetails()
     {
-        using var client = factory.CreateHttpsClient();
         var cancellationToken = TestContext.Current.CancellationToken;
+        using var client = await factory.CreateAuthenticatedClientAsync(
+            UserRole.Admin,
+            cancellationToken);
         var missingDeviceId = Guid.NewGuid();
 
         var deviceResponse = await client.GetAsync(
@@ -107,8 +114,10 @@ public sealed class DeviceTelemetryEndpointsTests(PostgreSqlApiFactory factory)
     [Fact(Skip = DatabaseSkipReason, SkipUnless = nameof(IsDatabaseConfigured))]
     public async Task CreateDevice_WithInvalidInput_ReturnsValidationProblemDetails()
     {
-        using var client = factory.CreateHttpsClient();
         var cancellationToken = TestContext.Current.CancellationToken;
+        using var client = await factory.CreateAuthenticatedClientAsync(
+            UserRole.Admin,
+            cancellationToken);
 
         var response = await client.PostAsJsonAsync(
             "/api/devices",
@@ -126,8 +135,10 @@ public sealed class DeviceTelemetryEndpointsTests(PostgreSqlApiFactory factory)
     [Fact(Skip = DatabaseSkipReason, SkipUnless = nameof(IsDatabaseConfigured))]
     public async Task TelemetryWorkflow_WritesAndQueriesLatestAndHistory()
     {
-        using var client = factory.CreateHttpsClient();
         var cancellationToken = TestContext.Current.CancellationToken;
+        using var client = await factory.CreateAuthenticatedClientAsync(
+            UserRole.Admin,
+            cancellationToken);
         var device = await CreateDeviceAsync(client, cancellationToken);
         var firstRecordedAt = DateTimeOffset.UtcNow.AddMinutes(-10);
         var secondRecordedAt = DateTimeOffset.UtcNow.AddMinutes(-5);
@@ -178,8 +189,10 @@ public sealed class DeviceTelemetryEndpointsTests(PostgreSqlApiFactory factory)
     [Fact(Skip = DatabaseSkipReason, SkipUnless = nameof(IsDatabaseConfigured))]
     public async Task TelemetryEndpoints_WithInvalidValuesOrTime_ReturnValidationProblemDetails()
     {
-        using var client = factory.CreateHttpsClient();
         var cancellationToken = TestContext.Current.CancellationToken;
+        using var client = await factory.CreateAuthenticatedClientAsync(
+            UserRole.Admin,
+            cancellationToken);
         var device = await CreateDeviceAsync(client, cancellationToken);
 
         var invalidValuesResponse = await client.PostAsJsonAsync(

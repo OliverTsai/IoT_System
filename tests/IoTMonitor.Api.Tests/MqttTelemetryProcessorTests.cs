@@ -3,6 +3,7 @@ using System.Text.Json;
 using IoTMonitor.Api.Contracts.Common;
 using IoTMonitor.Api.Contracts.Devices;
 using IoTMonitor.Api.Contracts.Telemetry;
+using IoTMonitor.Api.Domain.Enums;
 using IoTMonitor.Api.Messaging.Mqtt;
 using IoTMonitor.Api.Tests.Infrastructure;
 using Microsoft.Extensions.DependencyInjection;
@@ -20,8 +21,10 @@ public sealed class MqttTelemetryProcessorTests(PostgreSqlApiFactory factory)
     [Fact(Skip = DatabaseSkipReason, SkipUnless = nameof(IsDatabaseConfigured))]
     public async Task ProcessAsync_WithValidMessage_StoresTelemetryVisibleThroughApi()
     {
-        using var client = factory.CreateHttpsClient();
         var cancellationToken = TestContext.Current.CancellationToken;
+        using var client = await factory.CreateAuthenticatedClientAsync(
+            UserRole.Admin,
+            cancellationToken);
         var device = await CreateDeviceAsync(client, cancellationToken);
         var processor = factory.Services.GetRequiredService<MqttTelemetryProcessor>();
         var payload = CreatePayload(Guid.NewGuid(), 26.4m, 48.2m);
@@ -45,8 +48,10 @@ public sealed class MqttTelemetryProcessorTests(PostgreSqlApiFactory factory)
     [Fact(Skip = DatabaseSkipReason, SkipUnless = nameof(IsDatabaseConfigured))]
     public async Task ProcessAsync_WithRepeatedMessageId_StoresOnlyOneReading()
     {
-        using var client = factory.CreateHttpsClient();
         var cancellationToken = TestContext.Current.CancellationToken;
+        using var client = await factory.CreateAuthenticatedClientAsync(
+            UserRole.Admin,
+            cancellationToken);
         var device = await CreateDeviceAsync(client, cancellationToken);
         var processor = factory.Services.GetRequiredService<MqttTelemetryProcessor>();
         var payload = CreatePayload(Guid.NewGuid(), 22.1m, 60.5m);
@@ -68,8 +73,10 @@ public sealed class MqttTelemetryProcessorTests(PostgreSqlApiFactory factory)
     [Fact(Skip = DatabaseSkipReason, SkipUnless = nameof(IsDatabaseConfigured))]
     public async Task ProcessAsync_WithInvalidOrUnknownDeviceMessage_RejectsWithoutWriting()
     {
-        using var client = factory.CreateHttpsClient();
         var cancellationToken = TestContext.Current.CancellationToken;
+        using var client = await factory.CreateAuthenticatedClientAsync(
+            UserRole.Admin,
+            cancellationToken);
         var device = await CreateDeviceAsync(client, cancellationToken);
         var processor = factory.Services.GetRequiredService<MqttTelemetryProcessor>();
         var invalidPayload = CreatePayload(Guid.NewGuid(), 500m, 50m);

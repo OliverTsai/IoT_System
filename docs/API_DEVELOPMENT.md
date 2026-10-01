@@ -96,17 +96,19 @@ OpenAPI 端點只在 Development 環境啟用。
 
 MQTT 遙測接收預設停用；設定方式、topic、payload 與模擬器操作請參考 [`MQTT_DEVELOPMENT.md`](MQTT_DEVELOPMENT.md)。
 
+Cookie 登入、角色權限、Admin bootstrap 與 CSRF 操作請參考 [`AUTHENTICATION.md`](AUTHENTICATION.md)。除了文件列出的公開端點外，API 皆要求登入；所有會改變狀態的 request 還必須帶有效的 `X-CSRF-TOKEN`。
+
 ## 設備與遙測 API
 
 | Method | Path | 說明 |
 |---|---|---|
-| `POST` | `/api/devices` | 建立設備；`externalId` 不可重複。 |
-| `GET` | `/api/devices?page=1&pageSize=20` | 分頁取得設備列表。 |
-| `GET` | `/api/devices/{deviceId}` | 取得設備與最新一筆遙測。 |
-| `PATCH` | `/api/devices/{deviceId}/status` | 啟用或停用設備。 |
-| `POST` | `/api/devices/{deviceId}/telemetry` | 寫入溫度與濕度。 |
-| `GET` | `/api/devices/{deviceId}/telemetry/latest` | 取得最新一筆遙測。 |
-| `GET` | `/api/devices/{deviceId}/telemetry` | 依時間範圍分頁查詢遙測歷史。 |
+| `POST` | `/api/devices` | Admin 建立設備；`externalId` 不可重複。 |
+| `GET` | `/api/devices?page=1&pageSize=20` | 已登入使用者分頁取得設備列表。 |
+| `GET` | `/api/devices/{deviceId}` | 已登入使用者取得設備與最新一筆遙測。 |
+| `PATCH` | `/api/devices/{deviceId}/status` | Admin 啟用或停用設備。 |
+| `POST` | `/api/devices/{deviceId}/telemetry` | Admin／Operator 寫入溫度與濕度。 |
+| `GET` | `/api/devices/{deviceId}/telemetry/latest` | 已登入使用者取得最新一筆遙測。 |
+| `GET` | `/api/devices/{deviceId}/telemetry` | 已登入使用者依時間範圍分頁查詢遙測歷史。 |
 
 列表端點的 `page` 從 1 開始，`pageSize` 允許 1 到 100。遙測歷史可以使用 ISO 8601 格式的 `fromUtc` 與 `toUtc`，範圍包含起訖時間。
 

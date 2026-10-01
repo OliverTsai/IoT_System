@@ -6,6 +6,8 @@ namespace IoTMonitor.Api.Data;
 public sealed class IoTMonitorDbContext(DbContextOptions<IoTMonitorDbContext> options)
     : DbContext(options)
 {
+    public DbSet<ApplicationUser> Users => Set<ApplicationUser>();
+
     public DbSet<Device> Devices => Set<Device>();
 
     public DbSet<Telemetry> Telemetry => Set<Telemetry>();

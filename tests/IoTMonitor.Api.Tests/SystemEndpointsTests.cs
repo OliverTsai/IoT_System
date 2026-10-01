@@ -17,7 +17,10 @@ public sealed class SystemEndpointsTests(IoTMonitorApiFactory factory)
 
         var response = await client.GetAsync("/api/system", cancellationToken);
 
-        response.EnsureSuccessStatusCode();
+        Assert.True(
+            response.IsSuccessStatusCode,
+            $"Expected success but received {(int)response.StatusCode}: " +
+            await response.Content.ReadAsStringAsync(cancellationToken));
         var payload = await response.Content.ReadFromJsonAsync<SystemInfoResponse>(cancellationToken);
         Assert.NotNull(payload);
         Assert.Equal("IoTMonitor.Api", payload.Name);
@@ -83,6 +86,72 @@ public sealed class SystemEndpointsTests(IoTMonitorApiFactory factory)
         Assert.True(paths.TryGetProperty("/api/devices/{deviceId}/status", out _));
         Assert.True(paths.TryGetProperty("/api/devices/{deviceId}/telemetry", out _));
         Assert.True(paths.TryGetProperty("/api/devices/{deviceId}/telemetry/latest", out _));
+        Assert.True(paths.TryGetProperty("/api/auth/csrf", out _));
+        Assert.True(paths.TryGetProperty("/api/auth/login", out _));
+        Assert.True(paths.TryGetProperty("/api/auth/me", out _));
+        Assert.True(paths.TryGetProperty("/api/users", out _));
+    }
+
+    [Fact]
+    public async Task CorsPreflight_AllowsConfiguredOriginWithCredentials()
+    {
+        using var client = factory.CreateHttpsClient();
+        using var request = new HttpRequestMessage(HttpMethod.Options, "/api/devices");
+        request.Headers.Add("Origin", "http://localhost:5173");
+        request.Headers.Add("Access-Control-Request-Method", "GET");
+
+        var response = await client.SendAsync(
+            request,
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+        Assert.Equal(
+            "http://localhost:5173",
+            response.Headers.GetValues("Access-Control-Allow-Origin").Single());
+        Assert.Equal(
+            "true",
+            response.Headers.GetValues("Access-Control-Allow-Credentials").Single());
+    }
+
+    [Fact]
+    public async Task CorsPreflight_DoesNotTrustUnconfiguredOrigin()
+    {
+        using var client = factory.CreateHttpsClient();
+        using var request = new HttpRequestMessage(HttpMethod.Options, "/api/devices");
+        request.Headers.Add("Origin", "https://untrusted.example");
+        request.Headers.Add("Access-Control-Request-Method", "GET");
+
+        var response = await client.SendAsync(
+            request,
+            TestContext.Current.CancellationToken);
+
+        Assert.False(response.Headers.Contains("Access-Control-Allow-Origin"));
+    }
+
+    [Fact]
+    public async Task LoginEndpoint_RejectsRequestsBeyondConfiguredRateLimit()
+    {
+        using var client = factory.CreateHttpsClient();
+        var cancellationToken = TestContext.Current.CancellationToken;
+
+        for (var attempt = 0; attempt < 5; attempt++)
+        {
+            var response = await client.PostAsJsonAsync(
+                "/api/auth/login",
+                new { username = "rate-limit-test", password = "invalid" },
+                cancellationToken);
+            Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        }
+
+        var rejected = await client.PostAsJsonAsync(
+            "/api/auth/login",
+            new { username = "rate-limit-test", password = "invalid" },
+            cancellationToken);
+
+        Assert.Equal(HttpStatusCode.TooManyRequests, rejected.StatusCode);
+        Assert.Equal(
+            "application/problem+json",
+            rejected.Content.Headers.ContentType?.MediaType);
     }
 
     [Fact]

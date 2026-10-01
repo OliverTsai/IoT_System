@@ -3,6 +3,8 @@ using IoTMonitor.Api.Contracts.Devices;
 using IoTMonitor.Api.Contracts.Telemetry;
 using IoTMonitor.Api.Data;
 using IoTMonitor.Api.Domain.Entities;
+using IoTMonitor.Api.Security;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
@@ -16,6 +18,7 @@ public sealed class DevicesController(
     TimeProvider timeProvider) : ControllerBase
 {
     [HttpPost]
+    [Authorize(Policy = SecurityPolicies.AdminOnly)]
     [ProducesResponseType<DeviceResponse>(StatusCodes.Status201Created)]
     [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]
@@ -126,6 +129,7 @@ public sealed class DevicesController(
     }
 
     [HttpPatch("{deviceId:guid}/status")]
+    [Authorize(Policy = SecurityPolicies.AdminOnly)]
     [ProducesResponseType<DeviceResponse>(StatusCodes.Status200OK)]
     [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
