@@ -12,4 +12,4 @@
 - 本機基礎設施操作：[`docs/LOCAL_DEVELOPMENT.md`](docs/LOCAL_DEVELOPMENT.md)
 - API 開發與 migration：[`docs/API_DEVELOPMENT.md`](docs/API_DEVELOPMENT.md)
 
-目前已建立 ASP.NET Core Web API、PostgreSQL 資料模型與健康檢查基礎。設備 CRUD、MQTT 應用程式整合與 Vue 介面會依實作計畫逐步加入。
+目前已建立 ASP.NET Core Web API、PostgreSQL 資料模型、健康檢查，以及設備與遙測 REST API。MQTT 應用程式整合、安全驗證與 Vue 介面會依實作計畫逐步加入。

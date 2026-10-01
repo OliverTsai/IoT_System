@@ -66,6 +66,19 @@ dotnet build IoTMonitor.slnx --no-restore
 dotnet test IoTMonitor.slnx --no-build
 ```
 
+未設定測試資料庫時，只有不依賴資料庫的測試會執行，PostgreSQL 整合測試會顯示為 skipped。要執行完整測試，請指定本機 PostgreSQL 管理連線：
+
+```powershell
+$env:IOT_MONITOR_TEST_CONNECTION_STRING = `
+  "Host=localhost;Port=5433;Database=postgres;Username=iot_monitor;Password=<your-local-password>"
+
+dotnet test IoTMonitor.slnx --no-build
+
+Remove-Item Env:IOT_MONITOR_TEST_CONNECTION_STRING
+```
+
+整合測試會建立名稱隨機的 `iot_monitor_tests_*` 暫時資料庫、套用 migration，並在測試結束後刪除，不會清除 `iot_monitor` 開發資料庫。
+
 ## 啟動 API
 
 ```powershell
@@ -80,3 +93,19 @@ dotnet run --project src/IoTMonitor.Api/IoTMonitor.Api.csproj --launch-profile h
 - Database readiness：`https://localhost:7080/health/ready`
 
 OpenAPI 端點只在 Development 環境啟用。
+
+## 設備與遙測 API
+
+| Method | Path | 說明 |
+|---|---|---|
+| `POST` | `/api/devices` | 建立設備；`externalId` 不可重複。 |
+| `GET` | `/api/devices?page=1&pageSize=20` | 分頁取得設備列表。 |
+| `GET` | `/api/devices/{deviceId}` | 取得設備與最新一筆遙測。 |
+| `PATCH` | `/api/devices/{deviceId}/status` | 啟用或停用設備。 |
+| `POST` | `/api/devices/{deviceId}/telemetry` | 寫入溫度與濕度。 |
+| `GET` | `/api/devices/{deviceId}/telemetry/latest` | 取得最新一筆遙測。 |
+| `GET` | `/api/devices/{deviceId}/telemetry` | 依時間範圍分頁查詢遙測歷史。 |
+
+列表端點的 `page` 從 1 開始，`pageSize` 允許 1 到 100。遙測歷史可以使用 ISO 8601 格式的 `fromUtc` 與 `toUtc`，範圍包含起訖時間。
+
+溫度允許 -100 至 200°C、濕度允許 0 至 100%。`recordedAtUtc` 應使用含時區的 ISO 8601 格式，系統會轉換為 UTC，且不可超過伺服器目前時間五分鐘以上。驗證錯誤、找不到設備與重複識別碼會分別回傳 400、404、409 的 Problem Details。

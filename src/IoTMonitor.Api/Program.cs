@@ -13,6 +13,7 @@ builder.Logging.AddDebug();
 builder.Services.AddControllers();
 builder.Services.AddOpenApi();
 builder.Services.AddProblemDetails();
+builder.Services.AddSingleton(TimeProvider.System);
 
 builder.Services.AddDbContextPool<IoTMonitorDbContext>((serviceProvider, options) =>
 {

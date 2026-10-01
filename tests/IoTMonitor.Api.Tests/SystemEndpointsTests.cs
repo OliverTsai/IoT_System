@@ -57,6 +57,35 @@ public sealed class SystemEndpointsTests(IoTMonitorApiFactory factory)
     }
 
     [Fact]
+    public async Task OpenApiDocument_DescribesDeviceAndTelemetryOperations()
+    {
+        using var client = factory.CreateHttpsClient();
+        var cancellationToken = TestContext.Current.CancellationToken;
+
+        var response = await client.GetAsync("/openapi/v1.json", cancellationToken);
+
+        response.EnsureSuccessStatusCode();
+        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+        using var payload = await JsonDocument.ParseAsync(
+            stream,
+            cancellationToken: cancellationToken);
+        var paths = payload.RootElement.GetProperty("paths");
+        var createDevice = paths
+            .GetProperty("/api/devices")
+            .GetProperty("post");
+        var createDeviceResponses = createDevice.GetProperty("responses");
+
+        Assert.True(createDevice.TryGetProperty("requestBody", out _));
+        Assert.True(createDeviceResponses.TryGetProperty("201", out _));
+        Assert.True(createDeviceResponses.TryGetProperty("400", out _));
+        Assert.True(createDeviceResponses.TryGetProperty("409", out _));
+        Assert.True(paths.TryGetProperty("/api/devices/{deviceId}", out _));
+        Assert.True(paths.TryGetProperty("/api/devices/{deviceId}/status", out _));
+        Assert.True(paths.TryGetProperty("/api/devices/{deviceId}/telemetry", out _));
+        Assert.True(paths.TryGetProperty("/api/devices/{deviceId}/telemetry/latest", out _));
+    }
+
+    [Fact]
     public async Task UnknownEndpoint_ReturnsProblemDetails()
     {
         using var client = factory.CreateHttpsClient();

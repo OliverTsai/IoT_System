@@ -17,3 +17,54 @@ Accept: application/json
 
 GET {{IoTMonitorApi_HostAddress}}/openapi/v1.json
 Accept: application/json
+
+###
+
+POST {{IoTMonitorApi_HostAddress}}/api/devices
+Content-Type: application/json
+
+{
+  "externalId": "factory-01-temperature",
+  "name": "Factory 01 temperature sensor"
+}
+
+###
+
+GET {{IoTMonitorApi_HostAddress}}/api/devices?page=1&pageSize=20
+Accept: application/json
+
+### Replace this value with an id returned by POST /api/devices
+@deviceId = 00000000-0000-0000-0000-000000000000
+
+GET {{IoTMonitorApi_HostAddress}}/api/devices/{{deviceId}}
+Accept: application/json
+
+###
+
+PATCH {{IoTMonitorApi_HostAddress}}/api/devices/{{deviceId}}/status
+Content-Type: application/json
+
+{
+  "isActive": false
+}
+
+###
+
+POST {{IoTMonitorApi_HostAddress}}/api/devices/{{deviceId}}/telemetry
+Content-Type: application/json
+
+{
+  "temperatureCelsius": 24.8,
+  "humidityPercent": 52.4,
+  "recordedAtUtc": "2026-10-01T00:00:00Z"
+}
+
+###
+
+GET {{IoTMonitorApi_HostAddress}}/api/devices/{{deviceId}}/telemetry/latest
+Accept: application/json
+
+###
+
+GET {{IoTMonitorApi_HostAddress}}/api/devices/{{deviceId}}/telemetry?page=1&pageSize=20
+Accept: application/json
