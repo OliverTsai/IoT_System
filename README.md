@@ -13,5 +13,6 @@
 - API 開發與 migration：[`docs/API_DEVELOPMENT.md`](docs/API_DEVELOPMENT.md)
 - MQTT 遙測與設備模擬器：[`docs/MQTT_DEVELOPMENT.md`](docs/MQTT_DEVELOPMENT.md)
 - Authentication、角色授權與安全操作：[`docs/AUTHENTICATION.md`](docs/AUTHENTICATION.md)
+- Vue 前端啟動與驗證：[`docs/FRONTEND_DEVELOPMENT.md`](docs/FRONTEND_DEVELOPMENT.md)
 
-目前已建立 ASP.NET Core Web API、PostgreSQL、設備與遙測 REST API、MQTT 背景接收服務、設備模擬器，以及 Cookie Authentication／角色授權安全基線。Vue 介面會依實作計畫逐步加入。
+目前已建立 ASP.NET Core Web API、PostgreSQL、設備與遙測 REST API、MQTT 背景接收服務、設備模擬器、Cookie Authentication／角色授權安全基線，以及 Vue 3 RWD 監控介面。
