@@ -1,6 +1,7 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="src/IoTMonitor.Api/IoTMonitor.Api.csproj" />
+    <Project Path="src/IoTMonitor.DeviceSimulator/IoTMonitor.DeviceSimulator.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/IoTMonitor.Api.Tests/IoTMonitor.Api.Tests.csproj" />

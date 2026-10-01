@@ -94,6 +94,8 @@ dotnet run --project src/IoTMonitor.Api/IoTMonitor.Api.csproj --launch-profile h
 
 OpenAPI 端點只在 Development 環境啟用。
 
+MQTT 遙測接收預設停用；設定方式、topic、payload 與模擬器操作請參考 [`MQTT_DEVELOPMENT.md`](MQTT_DEVELOPMENT.md)。
+
 ## 設備與遙測 API
 
 | Method | Path | 說明 |

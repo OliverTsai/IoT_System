@@ -11,5 +11,6 @@
 - 目前進度與交接資訊：[`docs/PROGRESS.md`](docs/PROGRESS.md)
 - 本機基礎設施操作：[`docs/LOCAL_DEVELOPMENT.md`](docs/LOCAL_DEVELOPMENT.md)
 - API 開發與 migration：[`docs/API_DEVELOPMENT.md`](docs/API_DEVELOPMENT.md)
+- MQTT 遙測與設備模擬器：[`docs/MQTT_DEVELOPMENT.md`](docs/MQTT_DEVELOPMENT.md)
 
-目前已建立 ASP.NET Core Web API、PostgreSQL 資料模型、健康檢查，以及設備與遙測 REST API。MQTT 應用程式整合、安全驗證與 Vue 介面會依實作計畫逐步加入。
+目前已建立 ASP.NET Core Web API、PostgreSQL、設備與遙測 REST API、MQTT 背景接收服務及設備模擬器。安全驗證與 Vue 介面會依實作計畫逐步加入。

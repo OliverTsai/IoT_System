@@ -33,6 +33,7 @@ services:
     command:
       - |
         chown -R mosquitto:mosquitto /mosquitto/data
+        rm -f /tmp/mosquitto_password
         mosquitto_passwd -b -c /tmp/mosquitto_password "$${MQTT_USERNAME}" "$${MQTT_PASSWORD}"
         chown mosquitto:mosquitto /tmp/mosquitto_password
         chmod 0600 /tmp/mosquitto_password
