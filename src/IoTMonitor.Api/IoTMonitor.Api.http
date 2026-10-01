@@ -1,0 +1,19 @@
+@IoTMonitorApi_HostAddress = https://localhost:7080
+
+GET {{IoTMonitorApi_HostAddress}}/api/system
+Accept: application/json
+
+###
+
+GET {{IoTMonitorApi_HostAddress}}/health/live
+Accept: application/json
+
+###
+
+GET {{IoTMonitorApi_HostAddress}}/health/ready
+Accept: application/json
+
+###
+
+GET {{IoTMonitorApi_HostAddress}}/openapi/v1.json
+Accept: application/json
