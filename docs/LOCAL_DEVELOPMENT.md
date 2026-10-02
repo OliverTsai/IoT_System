@@ -1,79 +1,80 @@
-# 本機基礎設施
+# 本機開發環境
 
-階段 1 只使用 Docker Compose 執行 PostgreSQL 與 Eclipse Mosquitto。API、Vue 與設備模擬器會在後續階段加入。
+本專案可以使用完整容器模式，也可以只用 Docker 執行 PostgreSQL／Mosquitto，再由 IDE 啟動 API 與 Vue。
 
 ## 前置需求
 
-- Docker Desktop 已安裝並啟動。
-- `docker info` 與 `docker compose version` 可以成功執行。
-- 預設的 TCP `5433` 與 `1883` 連接埠未被占用；需要時可在 `.env` 改成其他 host port。PostgreSQL 容器內仍使用標準的 `5432`。
+- Docker Desktop 與 Docker Compose v2。
+- 本機開發模式另需 .NET 10 SDK、Node.js 22.12 以上與 npm 10 以上。
+- 預設 host ports：PostgreSQL `5433`、MQTT `1883`、Web HTTP `8080`、Web HTTPS `8443`。
 
 ## 建立本機設定
-
-第一次啟動前，從範例建立不納入 Git 的 `.env`：
 
 ```powershell
 Copy-Item .env.example .env
 ```
 
-接著將 `.env` 中兩個 `replace_with_a_local_password` 換成本機專用密碼。不要在聊天訊息、commit、README、issue 或 log 中貼出實際密碼。
+更換 `.env` 中 PostgreSQL、MQTT 與 Bootstrap Admin 的三個範例密碼。`.env` 已被 Git 忽略，不要將內容貼到聊天、log、issue 或 commit。
 
-## 驗證 Compose 設定
-
-```powershell
-docker compose config
-```
-
-如果只想驗證已提交的範例設定，不建立 `.env`：
+## 完整容器模式
 
 ```powershell
-docker compose --env-file .env.example config
-```
-
-## 啟動與查看狀態
-
-```powershell
-docker compose up -d
+docker compose config --quiet
+docker compose up -d --build --wait
 docker compose ps
-docker compose logs postgres mosquitto
+pwsh ./scripts/smoke-test.ps1
 ```
 
-兩個服務均應顯示為 `healthy`。
+瀏覽器使用 `https://localhost:8443`。完整說明與安全界線請參考 [`CONTAINER_DEPLOYMENT.md`](CONTAINER_DEPLOYMENT.md)。
 
-## MQTT 發布／訂閱驗證
+## IDE／本機程式模式
 
-開啟第一個 PowerShell，讓 Mosquitto 容器等待一筆訊息：
+只啟動基礎設施，避免與本機 API／Vite 重複：
 
 ```powershell
-docker compose exec mosquitto sh -c 'mosquitto_sub -h 127.0.0.1 -p 1883 -u "$MQTT_USERNAME" -P "$MQTT_PASSWORD" -t "devices/demo-001/telemetry" -C 1 -W 10'
+docker compose up -d postgres mosquitto
+docker compose ps postgres mosquitto
 ```
 
-再開啟第二個 PowerShell 發布測試訊息：
+接著依序參考：
+
+- [`API_DEVELOPMENT.md`](API_DEVELOPMENT.md)：連線字串、migration、API 啟動。
+- [`MQTT_DEVELOPMENT.md`](MQTT_DEVELOPMENT.md)：啟用 subscriber 與本機模擬器。
+- [`FRONTEND_DEVELOPMENT.md`](FRONTEND_DEVELOPMENT.md)：Vite 開發伺服器。
+
+## MQTT broker 驗證
+
+第一個 PowerShell 等待訊息：
 
 ```powershell
-docker compose exec mosquitto sh -c 'mosquitto_pub -h 127.0.0.1 -p 1883 -u "$MQTT_USERNAME" -P "$MQTT_PASSWORD" -t "devices/demo-001/telemetry" -m "{\"temperature\":25.4,\"humidity\":61,\"timestamp\":\"2026-09-30T00:00:00Z\"}" -q 1'
+docker compose exec mosquitto sh -c 'mosquitto_sub -h 127.0.0.1 -p 1883 -u "$MQTT_USERNAME" -P "$MQTT_PASSWORD" -t "healthcheck/manual" -C 1 -W 10'
 ```
 
-第一個 PowerShell 收到相同 JSON 即表示 broker 的 authentication、publish 與 subscribe 都正常。
+第二個 PowerShell發布：
 
-## 停止或重設
+```powershell
+docker compose exec mosquitto sh -c 'mosquitto_pub -h 127.0.0.1 -p 1883 -u "$MQTT_USERNAME" -P "$MQTT_PASSWORD" -t "healthcheck/manual" -m healthy -q 1'
+```
 
-保留資料並停止容器：
+## 停止與重設
+
+保留資料停止：
 
 ```powershell
 docker compose down
 ```
 
-查看 named volumes：
+查看本專案 volumes：
 
 ```powershell
 docker volume ls --filter label=com.docker.compose.project=iot-monitor
 ```
 
-`docker compose down --volumes` 會刪除 PostgreSQL 與 Mosquitto 的本機持久化資料，因此只有在確定不需要資料時才可執行；AI 不得自行執行這個指令。
+`docker compose down --volumes` 會永久刪除 PostgreSQL、Mosquitto 與 Data Protection key ring，只能在確定不需要資料時執行。
 
-## 安全範圍
+## 本機安全範圍
 
-- Broker 禁止匿名連線，密碼檔在容器啟動時由 `.env` 值產生，不會寫入 repository。
-- 目前 MQTT listener 未啟用 TLS，只適用於本機開發，不應直接暴露至區域網路或公網。
-- PostgreSQL 與 MQTT host ports 是為後續本機 API 與測試保留；正式部署時必須重新檢視是否需要對 host 公開。
+- 所有 host ports 都只綁定 `127.0.0.1`。
+- MQTT 未啟用 TLS；容器網路內由帳密保護，只適合本機開發。
+- Nginx 自簽憑證只用於本機展示，正式環境必須替換為受信任憑證。
+- Compose `.env` 不等同正式 secret manager，不應用於公網部署。

@@ -1,13 +1,13 @@
 # 專案進度與 AI 交接
 
-最後更新：2026-10-01
+最後更新：2026-10-02
 
 ## 目前閘門
 
-- Current phase：`7 - 告警與即時更新`
+- Current phase：`8 - 完整容器化、品質與作品集整理`
 - State：`awaiting_review`
-- Owner action：使用者審查階段 7 的告警、SignalR 與 Vue 即時更新程式碼，確認後自行提交；AI 不得開始階段 8。
-- Next phase：`8 - 完整容器化、品質與作品集整理`
+- Owner action：使用者審查階段 8 的程式碼與文件；確認後由使用者自行提交，或明確要求 AI 提交。
+- Next phase：無；階段 8 為目前計畫的最後階段。新的功能或部署需求應先新增計畫並取得使用者同意。
 
 狀態定義：
 
@@ -28,57 +28,68 @@
 | 4 | MQTT 資料接收與設備模擬器 | `accepted` |
 | 5 | Authentication、Authorization 與安全基線 | `accepted` |
 | 6 | Vue 3 RWD 儀表板 | `accepted` |
-| 7 | 告警與即時更新 | `awaiting_review` |
-| 8 | 完整容器化、品質與作品集整理 | `not_started` |
+| 7 | 告警與即時更新 | `accepted` |
+| 8 | 完整容器化、品質與作品集整理 | `awaiting_review` |
 
 ## 本階段完成內容
 
-- 新增可由設定覆寫的溫度與濕度 Warning／Critical 閾值；等於邊界時安全，每筆量測每項指標最多產生一筆符合最高嚴重度的告警。
-- REST 與 MQTT 遙測共用同一個寫入服務，遙測及其告警在同一次資料庫交易中持久化，成功後才發布即時事件。
-- 實作告警分頁、設備／類型／嚴重度／確認狀態篩選，以及 Operator／Admin 可用的冪等告警確認 API；Viewer 維持唯讀。
-- 告警確認時間先正規化為 PostgreSQL 微秒精度，確保第一次與重複確認的 API 回應完全一致。
-- 建立需要登入的 SignalR Hub，發布 `TelemetryReceived`、`AlertRaised` 與 `AlertAcknowledged`；發布失敗不回滾已持久化資料。
-- Vue 加入 SignalR client、連線狀態與持續重試；初次連線或重連成功時以 REST 補抓，避免斷線期間永久遺漏資料。
-- 總覽、設備明細及告警中心會即時更新；前端依 ID 去重及依時間排序，告警頁提供篩選、分頁與依角色顯示確認操作。
-- 補上告警規則、REST／MQTT 告警流程、權限、SignalR negotiation、前端事件派送與 REST 補抓測試，以及完整操作文件。
-- 既有初始 migration 已包含 `alerts` 資料表，本階段不需要新增或執行 migration。
+- 為 API、Vue/Nginx 與設備模擬器建立 .NET 10／Node 24 多階段 Dockerfile，並加入 repository 層級 `.dockerignore`。
+- Docker Compose 現在以一組指令整合 PostgreSQL、Mosquitto、API、Vue/Nginx 與模擬器，包含 health check、啟動相依性、restart policy、log rotation 與具名 volumes。
+- 自製容器全部以非 root 使用者執行，並設定唯讀 root filesystem、`cap_drop: ALL`、`no-new-privileges` 及必要的 tmpfs／volume。
+- Nginx 提供 Vue SPA、localhost 自簽 HTTPS、HTTP→HTTPS redirect、安全標頭，以及 REST、OpenAPI、health 與 SignalR WebSocket reverse proxy。
+- API 支援設定式啟動 migration、持久化 Data Protection key ring、Compose TLS termination、選擇性 OpenAPI，以及冪等的展示設備 seed；這些自動行為在一般 appsettings 預設關閉。
+- Compose 展示環境會建立 Bootstrap Admin 與匹配模擬器的展示設備，讓 MQTT 遙測在首次啟動後即可從 UI／REST 觀察。
+- 新增 `scripts/smoke-test.ps1`，涵蓋 process/database health、Vue/CSP、OpenAPI、CSRF/Cookie 登入、受保護 REST、SignalR negotiation、MQTT→API→PostgreSQL 遙測鏈路與登出。
+- 重寫作品集 README，補上系統架構、技術選擇、一組指令啟動、範例帳號、角色/API/MQTT 範例、安全邊界與 repository 導覽。
+- 新增完整容器操作手冊，並同步更新本機、API、Authentication、MQTT 與前端開發文件。
+- 補上 Demo Data 設定驗證測試；完整測試數由 46 增加為 52。
+- 移除容器紀錄中的 Alpine GSSAPI 函式庫錯誤、反向代理下重複 HTTPS redirect 警告，以及重複設定 Antiforgery 快取標頭的警告。
 
 ## 本階段驗證
 
+- [x] `docker compose --env-file .env.example config --quiet` 通過。
+- [x] API、Vue/Nginx、模擬器三個映像均成功建置。
+- [x] 使用隔離專案 `iot-monitor-stage8-test` 與空白 volumes 啟動五個服務；PostgreSQL migration、Bootstrap Admin、demo seed、MQTT 訂閱及所有 health checks 成功。
+- [x] `scripts/smoke-test.ps1` 通過：HTTPS、Authentication、REST、SignalR negotiation、MQTT 與 PostgreSQL 端對端鏈路正常。
+- [x] API、Web、Simulator 容器分別以 uid 1654、101、1654 執行；Data Protection volume 已實際產生 key 檔。
+- [x] 最終 API 紀錄中沒有 GSSAPI 載入錯誤、HTTPS port 判定警告、Antiforgery header 警告或未處理例外。
 - [x] `dotnet format IoTMonitor.slnx --verify-no-changes --no-restore` 通過。
 - [x] `dotnet build IoTMonitor.slnx -c Release --no-restore` 成功：0 warnings、0 errors。
-- [x] 使用隔離的 PostgreSQL 測試資料庫執行 `dotnet test`：46 tests passed、0 failed、0 skipped；完成後確認沒有 `iot_monitor_tests_*` 資料庫殘留。
-- [x] 告警整合測試涵蓋安全量測、Critical 告警、查詢篩選、Viewer 禁止確認、Operator 確認與重複確認；MQTT 超標量測亦會產生告警。
-- [x] `npm run type-check` 通過。
-- [x] `npm run lint` 通過，0 errors、0 warnings。
+- [x] 使用隔離 PostgreSQL 執行完整 `dotnet test`：52 passed、0 failed、0 skipped；測試資料庫會在結束時清除。
+- [x] `npm run type-check` 與 `npm run lint` 通過。
 - [x] `npm run test` 通過：3 test files、7 tests passed。
 - [x] `npm run build` 通過：75 modules transformed，production assets 成功產生。
-- [x] `npm audit` 通過：0 vulnerabilities。
-- [x] 前端測試涵蓋 SignalR 遙測／告警事件派送、初次連線與重連後 REST 補抓，以及告警查詢與確認的 CSRF request。
+- [x] `npm audit`：0 vulnerabilities。
+- [x] `dotnet list IoTMonitor.slnx package --vulnerable --include-transitive`：沒有已知易受攻擊的直接或傳遞套件。
+- [x] `git diff --check` 沒有 whitespace error；僅顯示 Windows 工作目錄的 LF→CRLF 提示。
+- [x] 驗證完成後確認沒有 `iot_monitor_tests_*` 資料庫殘留，並移除 `iot-monitor-stage8-test` 的 containers、network 與 volumes。
+- [x] 以既有 PostgreSQL volume 實際驗證密碼輪替修復；保留資料同步角色密碼後，使用 `WEB_HTTP_PORT=8083` 避開其他容器占用，完整 smoke test 再次通過。
+
+## 建議審查重點
+
+1. 閱讀 `compose.yaml` 與三個 Dockerfile，確認服務依賴、網路暴露面及容器限制。
+2. 閱讀 `Program.cs` 的 migration、Data Protection、OpenAPI、Demo Data 與 reverse proxy 設定。
+3. 依 README 將 `.env.example` 複製為 `.env` 並替換三組範例密碼，再執行完整啟動與 smoke test。
+4. 確認 README、`docs/CONTAINER_DEPLOYMENT.md` 與各開發文件足以讓面試官重現主要功能。
+5. 審查完成後再由使用者提交；目前尚未建立任何 commit。
 
 ## 已知事項與風險
 
-- `5432` 已由既有的 `holdem-backend-postgres-1` 使用；本專案固定以 `.env.example` 的 `5433` 避免衝突。
-- MQTT 目前未啟用 TLS，且資料庫與 broker 會發布到 host port；此設定只適用本機開發，不可直接用於正式環境。
-- Codex shell 未繼承 Docker PATH；目前 Docker CLI 位於 `C:\Users\COSH\AppData\Local\Programs\DockerDesktop\resources\bin\docker.exe`。
-- MQTT 預設停用，必須使用 User Secrets 或環境變數提供本機 broker 帳密並啟用。
-- message id 去重目前只適用單一 API 執行個體，且 API 重啟後會清空；跨執行個體／重啟去重預定未來改用資料庫唯一鍵或分散式儲存。
-- Bootstrap Admin 預設停用且 repository 沒有預設密碼；首次本機登入前需依 `docs/AUTHENTICATION.md` 使用 User Secrets 建立 Admin，建立後立即移除 bootstrap password。
-- Auth 與 antiforgery Cookie 強制 Secure，本機登入流程必須使用 HTTPS；Vue 必須使用 credentials 並在登入後重新取得 CSRF token。
-- Cookie 加密依賴 ASP.NET Core Data Protection key；階段 8 容器化時必須持久化且保護 key ring，否則容器重建會使現有 Cookie 失效。
-- 目前每一筆超標量測都會建立新告警，尚未合併為告警事件區間或加入冷卻時間；這是階段 7 的明確行為，實際產品可再依需求調整。
-- `DeviceOffline` 類型已保留，但尚未定義設備心跳期限，因此目前不會自動產生離線告警。
-- SignalR 目前使用單一 API 執行個體的 in-process Hub；若未來橫向擴充，需要加入 Redis 或受管 SignalR backplane。
-- 前端 production build 目前是靜態產物，尚無 Dockerfile 或反向代理設定；這些工作屬於階段 8。
-- 本階段已由自動測試驗證即時事件處理與重連補抓策略，但未使用真實登入帳號進行瀏覽器端的 SignalR 端對端操作；階段 8 的整套 smoke test 應補驗證此路徑。
-- 未設定 `IOT_MONITOR_TEST_CONNECTION_STRING` 時，20 個 PostgreSQL 整合測試會顯示為 skipped；完整測試指令已記錄於 `docs/API_DEVELOPMENT.md`。
-- 舊 `WebApplication2` 目錄只剩被 Git 忽略的 `bin`、`obj`、`*.user` 等本機產生物，不屬於新的 solution。
+- Nginx 映像使用 build 時產生的 localhost 自簽憑證，只適合本機展示；正式部署必須改用受信任憑證或平台 TLS ingress。
+- MQTT 尚未啟用 TLS；PostgreSQL 與 broker 的 host port 僅綁 `127.0.0.1` 供本機工具使用，不可直接照搬到公網環境。
+- Compose 透過 environment 傳遞密碼，Data Protection key 存於 Docker volume 但未由 KMS 加密；正式環境應使用 secret manager 與受保護的 key storage。
+- Compose 為方便展示而啟用 Bootstrap Admin、Demo Data 與 OpenAPI；正式環境應全部關閉，migration 也應改由一次性部署工作執行。
+- 自動 migration 適用目前單一 API replica；多 replica 同時啟動前應改用獨立 migration job。
+- SignalR 與 MQTT message ID 去重仍以單一 API 執行個體為假設；橫向擴充需加入 backplane 與分散式去重。
+- 目前每筆超標量測都會建立新告警，尚未合併事件區間或加入冷卻時間；`DeviceOffline` 類型也尚未定義心跳期限。
+- 本機 `5432` 已由其他專案使用，因此範例 PostgreSQL host port 為 `5433`。
+- Codex shell 未繼承 Docker／.NET PATH；自動驗證使用已確認的完整執行檔路徑，不影響一般 PowerShell 使用者環境。
 
 ## 恢復工作檢查表
 
 下一位 AI 或下一次工作開始時：
 
-1. 閱讀 `AGENTS.md` 與 `docs/IMPLEMENTATION_PLAN.md`。
+1. 閱讀 `AGENTS.md`、`docs/IMPLEMENTATION_PLAN.md` 與本檔案。
 2. 執行 `git status --short --branch` 及 `git log -1 --oneline`。
-3. 階段 7 目前為 `awaiting_review`；只能回答問題或修正階段 7 的審查意見，不得開始容器化或作品集整理。
-4. 使用者審查並自行 commit 後，只有在收到明確指示時才能將階段 7 標為 `accepted` 並開始階段 8。
+3. 階段 8 目前為 `awaiting_review`；除非使用者提出審查修正，不得繼續擴張功能或自行提交。
+4. 若使用者確認並已提交，可將階段 8 改為 `accepted`；新需求應先建立新的計畫階段。

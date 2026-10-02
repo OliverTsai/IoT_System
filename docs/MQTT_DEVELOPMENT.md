@@ -16,6 +16,8 @@ IoTMonitor.Api BackgroundService ──► PostgreSQL ──► REST API
 
 API 的 MQTT 接收功能預設停用，避免沒有 broker 或本機秘密設定時影響一般 API 與測試。Mosquitto 必須先依照 [`LOCAL_DEVELOPMENT.md`](LOCAL_DEVELOPMENT.md) 啟動。
 
+完整 Compose 會啟用 subscriber、建立與模擬器 prefix/count 相符的 demo devices，並在 API healthy 後啟動容器化模擬器，因此全新環境不需手動建立設備。appsettings 與 IDE 模式仍維持預設停用。
+
 ## 啟用 API MQTT 接收
 
 使用 User Secrets 設定本機 broker，不要把真實密碼加入 `appsettings*.json`：

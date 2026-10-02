@@ -1,5 +1,11 @@
 name: iot-monitor
 
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: 10m
+    max-file: "3"
+
 services:
   postgres:
     image: postgres:17-alpine
@@ -9,7 +15,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER in .env}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
     ports:
-      - "${POSTGRES_PORT:-5433}:5432"
+      - "127.0.0.1:${POSTGRES_PORT:-5433}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -20,6 +26,9 @@ services:
       timeout: 5s
       retries: 10
       start_period: 10s
+    security_opt:
+      - no-new-privileges:true
+    logging: *default-logging
 
   mosquitto:
     image: eclipse-mosquitto:2
@@ -39,7 +48,7 @@ services:
         chmod 0600 /tmp/mosquitto_password
         exec /usr/sbin/mosquitto -c /mosquitto/config/mosquitto.conf
     ports:
-      - "${MQTT_PORT:-1883}:1883"
+      - "127.0.0.1:${MQTT_PORT:-1883}:1883"
     volumes:
       - ./infra/mosquitto/config/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
       - mosquitto_data:/mosquitto/data
@@ -54,7 +63,125 @@ services:
       timeout: 5s
       retries: 10
       start_period: 5s
+    security_opt:
+      - no-new-privileges:true
+    logging: *default-logging
+
+  api:
+    build:
+      context: .
+      dockerfile: src/IoTMonitor.Api/Dockerfile
+    restart: unless-stopped
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_HTTP_PORTS: 8080
+      ASPNETCORE_FORWARDEDHEADERS_ENABLED: "true"
+      ConnectionStrings__IoTMonitor: "Host=postgres;Port=5432;Database=${POSTGRES_DB:?Set POSTGRES_DB in .env};Username=${POSTGRES_USER:?Set POSTGRES_USER in .env};Password=${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}"
+      Database__MigrateOnStartup: "true"
+      DataProtection__KeysPath: /var/lib/iotmonitor/keys
+      OpenApi__Enabled: "true"
+      ReverseProxy__TerminatesTls: "true"
+      Authentication__BootstrapAdmin__Enabled: ${BOOTSTRAP_ADMIN_ENABLED:-true}
+      Authentication__BootstrapAdmin__Username: ${BOOTSTRAP_ADMIN_USERNAME:-admin}
+      Authentication__BootstrapAdmin__Password: ${BOOTSTRAP_ADMIN_PASSWORD:?Set BOOTSTRAP_ADMIN_PASSWORD in .env}
+      Security__AllowedOrigins__0: "https://localhost:${WEB_HTTPS_PORT:-8443}"
+      Mqtt__Enabled: "true"
+      Mqtt__Host: mosquitto
+      Mqtt__Port: 1883
+      Mqtt__Username: ${MQTT_USERNAME:?Set MQTT_USERNAME in .env}
+      Mqtt__Password: ${MQTT_PASSWORD:?Set MQTT_PASSWORD in .env}
+      DemoData__Enabled: ${DEMO_DATA_ENABLED:-true}
+      DemoData__DevicePrefix: ${SIMULATOR_DEVICE_PREFIX:-sim-device}
+      DemoData__DeviceCount: ${SIMULATOR_DEVICE_COUNT:-3}
+      Logging__LogLevel__Microsoft.EntityFrameworkCore.Database.Command: Warning
+    expose:
+      - "8080"
+    volumes:
+      - data_protection_keys:/var/lib/iotmonitor/keys
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mosquitto:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - wget -qO- http://127.0.0.1:8080/health/ready >/dev/null
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    logging: *default-logging
+
+  web:
+    build:
+      context: .
+      dockerfile: src/iot-monitor-web/Dockerfile
+      args:
+        VITE_API_BASE_URL: ""
+        WEB_HTTPS_PORT: ${WEB_HTTPS_PORT:-8443}
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${WEB_HTTP_PORT:-8080}:8080"
+      - "127.0.0.1:${WEB_HTTPS_PORT:-8443}:8443"
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - wget --no-check-certificate -qO- https://127.0.0.1:8443/container-health >/dev/null
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    logging: *default-logging
+
+  simulator:
+    build:
+      context: .
+      dockerfile: src/IoTMonitor.DeviceSimulator/Dockerfile
+    restart: unless-stopped
+    environment:
+      MQTT_HOST: mosquitto
+      MQTT_PORT: 1883
+      MQTT_USERNAME: ${MQTT_USERNAME:?Set MQTT_USERNAME in .env}
+      MQTT_PASSWORD: ${MQTT_PASSWORD:?Set MQTT_PASSWORD in .env}
+      MQTT_CLIENT_ID: iot-monitor-compose-simulator
+      MQTT_RECONNECT_DELAY_SECONDS: 5
+      SIMULATOR_DEVICE_PREFIX: ${SIMULATOR_DEVICE_PREFIX:-sim-device}
+      SIMULATOR_DEVICE_COUNT: ${SIMULATOR_DEVICE_COUNT:-3}
+      SIMULATOR_INTERVAL_SECONDS: ${SIMULATOR_INTERVAL_SECONDS:-5}
+      SIMULATOR_MESSAGES_PER_DEVICE: "0"
+    depends_on:
+      mosquitto:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    logging: *default-logging
 
 volumes:
   postgres_data:
   mosquitto_data:
+  data_protection_keys:

@@ -30,7 +30,6 @@ public sealed class AuthController(
     [ProducesResponseType<CsrfTokenResponse>(StatusCodes.Status200OK)]
     public ActionResult<CsrfTokenResponse> GetCsrfToken()
     {
-        Response.Headers.CacheControl = "no-store";
         var tokens = antiforgery.GetAndStoreTokens(HttpContext);
         return Ok(new CsrfTokenResponse(tokens.RequestToken!));
     }

@@ -77,7 +77,7 @@ npm run build
 npm audit
 ```
 
-`npm run build` 的輸出位於被 Git 忽略的 `dist`。階段 8 才會建立前端 Dockerfile，並把 Vue、API、PostgreSQL、Mosquitto 與模擬器納入完整 Compose。
+`npm run build` 的輸出位於被 Git 忽略的 `dist`。完整 Compose 會在 Node 多階段建置後，只把靜態產物放進非 root Nginx，並由同一 HTTPS origin reverse proxy REST 與 SignalR；請參考 [`CONTAINER_DEPLOYMENT.md`](CONTAINER_DEPLOYMENT.md)。
 
 ## 常見問題
 

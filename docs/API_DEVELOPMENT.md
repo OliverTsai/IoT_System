@@ -10,11 +10,11 @@
 
 ## 前置步驟
 
-先依照 [`LOCAL_DEVELOPMENT.md`](LOCAL_DEVELOPMENT.md) 啟動 PostgreSQL：
+若要從 IDE 執行 API，先依照 [`LOCAL_DEVELOPMENT.md`](LOCAL_DEVELOPMENT.md) 只啟動基礎設施：
 
 ```powershell
-docker compose up -d
-docker compose ps
+docker compose up -d postgres mosquitto
+docker compose ps postgres mosquitto
 ```
 
 PostgreSQL 對主機使用 `5433`，容器內仍使用 `5432`。
@@ -92,7 +92,7 @@ dotnet run --project src/IoTMonitor.Api/IoTMonitor.Api.csproj --launch-profile h
 - Process health：`https://localhost:7080/health/live`
 - Database readiness：`https://localhost:7080/health/ready`
 
-OpenAPI 端點只在 Development 環境啟用。
+OpenAPI 預設只在 Development 環境啟用。完整 Compose 會透過明確設定自動套用 migration，並在 `https://localhost:8443/openapi/v1.json` 提供作品展示用的 OpenAPI。一般本機／正式 appsettings 預設不會自動 migration；容器設計與限制請參考 [`CONTAINER_DEPLOYMENT.md`](CONTAINER_DEPLOYMENT.md)。
 
 MQTT 遙測接收預設停用；設定方式、topic、payload 與模擬器操作請參考 [`MQTT_DEVELOPMENT.md`](MQTT_DEVELOPMENT.md)。
 

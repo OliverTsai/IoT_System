@@ -1,6 +1,7 @@
 using System.Text.Json.Serialization;
 using IoTMonitor.Api.Alerts;
 using IoTMonitor.Api.Data;
+using IoTMonitor.Api.DemoData;
 using IoTMonitor.Api.Domain.Entities;
 using IoTMonitor.Api.Domain.Enums;
 using IoTMonitor.Api.HealthChecks;
@@ -10,6 +11,7 @@ using IoTMonitor.Api.Security;
 using IoTMonitor.Api.TelemetryProcessing;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc.Authorization;
@@ -30,6 +32,15 @@ var authenticationConfiguration = builder.Configuration
 var securityConfiguration = builder.Configuration
     .GetSection(WebSecurityOptions.SectionName)
     .Get<WebSecurityOptions>() ?? new WebSecurityOptions();
+var dataProtectionKeysPath = builder.Configuration["DataProtection:KeysPath"];
+
+if (!string.IsNullOrWhiteSpace(dataProtectionKeysPath))
+{
+    builder.Services
+        .AddDataProtection()
+        .SetApplicationName("IoTMonitor.Api")
+        .PersistKeysToFileSystem(new DirectoryInfo(dataProtectionKeysPath));
+}
 
 builder.Services.AddControllers(options =>
     {
@@ -74,6 +85,14 @@ builder.Services
     .ValidateOnStart();
 
 builder.Services
+    .AddOptions<DemoDataOptions>()
+    .Bind(builder.Configuration.GetSection(DemoDataOptions.SectionName))
+    .Validate(
+        options => options.HasValidConfiguration(),
+        "Enabled demo data requires a valid device prefix and a device count from 1 to 100.")
+    .ValidateOnStart();
+
+builder.Services
     .AddOptions<WebSecurityOptions>()
     .Bind(builder.Configuration.GetSection(WebSecurityOptions.SectionName))
     .Validate(
@@ -94,6 +113,7 @@ builder.Services.AddScoped<IPasswordHasher<ApplicationUser>, PasswordHasher<Appl
 builder.Services.AddScoped<ApplicationCookieEvents>();
 builder.Services.AddScoped<ApiAntiforgeryFilter>();
 builder.Services.AddHostedService<BootstrapAdminHostedService>();
+builder.Services.AddHostedService<DemoDeviceHostedService>();
 
 builder.Services
     .AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
@@ -203,20 +223,33 @@ builder.Services
 
 var app = builder.Build();
 
+if (app.Configuration.GetValue<bool>("Database:MigrateOnStartup"))
+{
+    await using var scope = app.Services.CreateAsyncScope();
+    var dbContext = scope.ServiceProvider.GetRequiredService<IoTMonitorDbContext>();
+    await dbContext.Database.MigrateAsync();
+}
+
 app.UseExceptionHandler();
 app.UseStatusCodePages();
 app.UseMiddleware<SecurityHeadersMiddleware>();
 
-if (app.Environment.IsDevelopment())
+if (app.Environment.IsDevelopment() ||
+    app.Configuration.GetValue<bool>("OpenApi:Enabled"))
 {
     app.MapOpenApi().AllowAnonymous();
 }
-else
+
+if (!app.Environment.IsDevelopment())
 {
     app.UseHsts();
 }
 
-app.UseHttpsRedirection();
+if (!app.Configuration.GetValue<bool>("ReverseProxy:TerminatesTls"))
+{
+    app.UseHttpsRedirection();
+}
+
 app.UseCors(SecurityPolicies.WebClientCors);
 app.UseAuthentication();
 app.UseRateLimiter();

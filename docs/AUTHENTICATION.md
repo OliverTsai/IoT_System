@@ -74,6 +74,8 @@ dotnet user-secrets set `
 
 後續帳號只能由 Admin 呼叫 `POST /api/users` 建立，密碼會使用 ASP.NET Core `PasswordHasher` 儲存為加鹽雜湊，API response 不會包含 hash。
 
+完整 Compose 會從 `.env` 將相同設定傳入 API。全新 volume 啟動時建立一次 Admin；username 已存在時不會覆寫密碼。不要直接在資料庫插入明文 `password_hash`。操作方式請參考 [`CONTAINER_DEPLOYMENT.md`](CONTAINER_DEPLOYMENT.md)。
+
 ## Cookie 登入與 CSRF 流程
 
 瀏覽器 client 必須在跨 origin request 設定 credentials，例如 Fetch 的 `credentials: "include"`。
@@ -92,5 +94,5 @@ dotnet user-secrets set `
 - 全域 rate limit 預設每個使用者或來源 IP 每分鐘 120 次；登入另外限制每個來源 IP 每分鐘 5 次。
 - API 加入 `X-Content-Type-Options`、`X-Frame-Options`、`Referrer-Policy`、`Permissions-Policy` 與 restrictive CSP。
 - 非 Development 環境啟用 HSTS。
-- Cookie 加密依賴 ASP.NET Core Data Protection key。階段 8 容器化時必須將 key ring 放在持久化且限制權限的 volume；key 遺失會讓現有登入 Cookie 全部失效。
+- Cookie 加密依賴 ASP.NET Core Data Protection key。容器環境將 key ring 放在只供非 root API 使用者寫入的 `data_protection_keys` volume；刪除 volume 會讓既有登入 Cookie 全部失效。正式環境仍應使用 KMS 或憑證加密保護 key material。
 - 設定與 log 不應記錄密碼、Cookie、CSRF token 或原始認證 header。
