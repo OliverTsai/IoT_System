@@ -1,15 +1,29 @@
 <script setup lang="ts">
-defineProps<{
+import { computed } from "vue";
+
+const props = defineProps<{
   active: boolean;
+  online: boolean;
 }>();
+
+const status = computed(() => {
+  if (!props.active) return "disabled";
+  return props.online ? "online" : "offline";
+});
+
+const label = computed(() => ({
+  disabled: "已停用",
+  offline: "離線",
+  online: "運作中",
+})[status.value]);
 </script>
 
 <template>
   <span
     class="status-badge"
-    :class="active ? 'status-badge--active' : 'status-badge--inactive'"
+    :class="`status-badge--${status}`"
   >
     <span aria-hidden="true" />
-    {{ active ? "運作中" : "已停用" }}
+    {{ label }}
   </span>
 </template>

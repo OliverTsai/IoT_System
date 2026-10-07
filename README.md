@@ -9,6 +9,7 @@
 - ASP.NET Core 10 Web API、EF Core 10、PostgreSQL migration 與一致的 Problem Details。
 - Vue 3、TypeScript、Vite、Vue Router，以及桌面／平板／手機 RWD。
 - MQTT QoS 1 遙測接收、設備模擬器、payload 驗證、重連與基本 message ID 去重。
+- 依最近 30 秒遙測判定設備運作狀態，並支援明確設定同 Wi-Fi 手機連入本機 MQTT broker。
 - 溫濕度 Warning／Critical 告警、查詢、篩選及冪等確認。
 - SignalR 即時遙測與告警；斷線後自動重連並以 REST 補抓缺口。
 - Cookie Authentication、CSRF、Admin／Operator／Viewer 授權、CORS 白名單、rate limiting 與安全標頭。
@@ -27,7 +28,7 @@ flowchart LR
     Proxy --> Api
 ```
 
-瀏覽器只連到負責 TLS termination 的 Nginx HTTPS 入口；API 不直接發布到 host。PostgreSQL 與 MQTT 的開發 port 僅綁定 `127.0.0.1`。
+瀏覽器只連到負責 TLS termination 的 Nginx HTTPS 入口；API 不直接發布到 host。PostgreSQL 與 MQTT 的開發 port 預設僅綁定 `127.0.0.1`；只有同 Wi-Fi 設備測試時才明確將 MQTT 綁到電腦的私有 IPv4。
 
 ## 技術組合
 
@@ -145,6 +146,8 @@ Payload：
 
 詳細 topic、驗證規則、去重與重連策略請參考 [`docs/MQTT_DEVELOPMENT.md`](docs/MQTT_DEVELOPMENT.md)。
 
+管理員啟用狀態與設備連線狀態分開顯示。有效遙測寫入後，設備在 30 秒內顯示為運作中；停止回報後會自動轉為離線。同一 Wi-Fi 的手機 MQTT Client 驗證步驟也位於上述文件。
+
 ## 本機品質檢查
 
 ```powershell
@@ -171,6 +174,7 @@ PostgreSQL 完整整合測試需要設定 `IOT_MONITOR_TEST_CONNECTION_STRING`�
 - Compose 透過環境變數提供本機秘密；正式環境應改用平台 secret manager，並加密保護 Data Protection keys。
 - 自動 migration 與 demo seed 都由設定控制，預設 appsettings 關閉、僅 Compose 展示環境啟用。
 - SignalR 與 MQTT message ID 去重目前以單一 API 執行個體為假設；橫向擴充需加入 backplane 與分散式去重。
+- MQTT 區網測試仍使用未加密的 1883，只能在可信任的私人網路短暫啟用；正式設備接入必須改用 TLS、個別設備憑證或帳密及 topic ACL。
 
 ## Repository 結構
 

@@ -13,6 +13,8 @@ export interface Device {
   name: string;
   isActive: boolean;
   createdAtUtc: string;
+  lastSeenAtUtc: string | null;
+  isOnline: boolean;
 }
 
 export interface Telemetry {

@@ -63,6 +63,70 @@ Payload：
 
 API 會在記憶體中保留最近 10 分鐘、最多 10,000 組 `(externalDeviceId, messageId)`。這能處理單一 API 執行個體常見的 QoS 1 重送；API 重啟或未來水平擴充後，需改用資料庫唯一鍵或分散式儲存，才能提供跨執行個體去重。
 
+## 同一 Wi-Fi 的手機驗證
+
+手機不需要公網固定 IP；手機與執行 Docker Compose 的電腦位於同一個可信任 Wi-Fi 時，可以直接連到電腦的私有 IPv4。這個驗證使用 MQTT TCP port `1883`，不是管理網站的 HTTP port `8080`／`8083`。
+
+一般情況下 `.env` 應維持：
+
+```text
+MQTT_BIND_ADDRESS=127.0.0.1
+```
+
+需要手機測試時，先以 `ipconfig` 找出電腦 Wi-Fi 介面的 IPv4，例如 `192.168.1.50`，再暫時改為：
+
+```text
+MQTT_BIND_ADDRESS=192.168.1.50
+```
+
+重新建立 broker port binding：
+
+```powershell
+docker compose up -d --force-recreate --wait mosquitto
+```
+
+Windows 防火牆只應允許私人網路的 TCP 1883；不要設定路由器 port forwarding，也不要將未啟用 TLS 的 broker 暴露到公網。測試結束後將 `MQTT_BIND_ADDRESS` 改回 `127.0.0.1` 並再次重建 Mosquitto。
+
+接著：
+
+1. 由 Admin 在管理頁面建立 external id 為 `phone-demo-001` 的啟用設備。
+2. 手機安裝可發布 MQTT 訊息的 client，使用下列連線設定：
+
+   ```text
+   Host: 192.168.1.50
+   Port: 1883
+   Username: .env 的 MQTT_USERNAME
+   Password: .env 的 MQTT_PASSWORD
+   Client ID: phone-demo-001
+   TLS: off
+   ```
+
+3. 以 QoS 1 發布到：
+
+   ```text
+   devices/phone-demo-001/telemetry
+   ```
+
+4. Payload 沿用既有契約；每次發布需使用新的 UUID，時間需替換為目前 UTC：
+
+   ```json
+   {
+     "messageId": "772d156a-7967-44b2-aa93-cfdd853d7d43",
+     "temperatureCelsius": 26.5,
+     "humidityPercent": 58.2,
+     "recordedAtUtc": "2026-10-07T08:00:00Z"
+   }
+   ```
+
+   可在電腦 PowerShell 產生欄位值：
+
+   ```powershell
+   [guid]::NewGuid().ToString()
+   [DateTimeOffset]::UtcNow.ToString("O")
+   ```
+
+設備的「已啟用／已停用」是管理狀態；「運作中／離線」則由最近一次遙測的 API 接收時間判定。收到有效資料後會立即顯示運作中，超過 30 秒沒有新資料便顯示離線。第一版不會根據 MQTT TCP 連線本身自動建立未知設備，未知 external id 仍會被拒絕。
+
 ## 建立模擬設備
 
 模擬器預設發布 `sim-device-001`。若要模擬三台設備，先透過 API 建立相同的 external id：

@@ -36,6 +36,8 @@ public sealed class DeviceTelemetryEndpointsTests(PostgreSqlApiFactory factory)
         Assert.NotNull(created);
         Assert.Equal(externalId, created.ExternalId);
         Assert.True(created.IsActive);
+        Assert.Null(created.LastSeenAtUtc);
+        Assert.False(created.IsOnline);
         Assert.Equal($"https://localhost/api/devices/{created.Id}", createResponse.Headers.Location?.ToString());
 
         var list = await client.GetFromJsonAsync<PagedResponse<DeviceResponse>>(
@@ -49,6 +51,8 @@ public sealed class DeviceTelemetryEndpointsTests(PostgreSqlApiFactory factory)
             cancellationToken);
         Assert.NotNull(details);
         Assert.Null(details.LatestTelemetry);
+        Assert.Null(details.LastSeenAtUtc);
+        Assert.False(details.IsOnline);
 
         var statusResponse = await client.PatchAsJsonAsync(
             $"/api/devices/{created.Id}/status",
@@ -58,6 +62,7 @@ public sealed class DeviceTelemetryEndpointsTests(PostgreSqlApiFactory factory)
         var updated = await statusResponse.Content.ReadFromJsonAsync<DeviceResponse>(cancellationToken);
         Assert.NotNull(updated);
         Assert.False(updated.IsActive);
+        Assert.False(updated.IsOnline);
     }
 
     [Fact(Skip = DatabaseSkipReason, SkipUnless = nameof(IsDatabaseConfigured))]
@@ -184,6 +189,49 @@ public sealed class DeviceTelemetryEndpointsTests(PostgreSqlApiFactory factory)
         Assert.Equal(2, pagedHistory.TotalPages);
         Assert.Single(pagedHistory.Items);
         Assert.Equal(latest.Id, pagedHistory.Items[0].Id);
+    }
+
+    [Fact(Skip = DatabaseSkipReason, SkipUnless = nameof(IsDatabaseConfigured))]
+    public async Task DevicePresence_IsOnlineForThirtySecondsAfterTelemetry()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var client = await factory.CreateAuthenticatedClientAsync(
+            UserRole.Admin,
+            cancellationToken);
+        var device = await CreateDeviceAsync(client, cancellationToken);
+
+        var telemetryResponse = await client.PostAsJsonAsync(
+            $"/api/devices/{device.Id}/telemetry",
+            ValidTelemetryRequest(factory.Clock.GetUtcNow().AddMinutes(-1)),
+            cancellationToken);
+        telemetryResponse.EnsureSuccessStatusCode();
+        var telemetry = await telemetryResponse.Content.ReadFromJsonAsync<TelemetryResponse>(
+            cancellationToken);
+        Assert.NotNull(telemetry);
+
+        var onlineDetails = await client.GetFromJsonAsync<DeviceDetailsResponse>(
+            $"/api/devices/{device.Id}",
+            cancellationToken);
+        Assert.NotNull(onlineDetails);
+        Assert.Equal(telemetry.ReceivedAtUtc, onlineDetails.LastSeenAtUtc);
+        Assert.True(onlineDetails.IsOnline);
+
+        var onlineList = await client.GetFromJsonAsync<PagedResponse<DeviceResponse>>(
+            "/api/devices?page=1&pageSize=100",
+            cancellationToken);
+        var listedDevice = Assert.Single(
+            onlineList!.Items,
+            candidate => candidate.Id == device.Id);
+        Assert.Equal(telemetry.ReceivedAtUtc, listedDevice.LastSeenAtUtc);
+        Assert.True(listedDevice.IsOnline);
+
+        factory.Clock.Advance(TimeSpan.FromSeconds(31));
+
+        var offlineDetails = await client.GetFromJsonAsync<DeviceDetailsResponse>(
+            $"/api/devices/{device.Id}",
+            cancellationToken);
+        Assert.NotNull(offlineDetails);
+        Assert.False(offlineDetails.IsOnline);
     }
 
     [Fact(Skip = DatabaseSkipReason, SkipUnless = nameof(IsDatabaseConfigured))]

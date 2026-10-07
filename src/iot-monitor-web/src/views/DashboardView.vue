@@ -8,6 +8,7 @@ import StatusBadge from "../components/StatusBadge.vue";
 import UiState from "../components/UiState.vue";
 import { monitoringRealtime } from "../realtime/monitoring";
 import { authStore } from "../stores/auth";
+import { isDeviceOnline } from "../utils/devicePresence";
 import { formatNumber, formatRelativeTime } from "../utils/format";
 
 const devices = ref<Device[]>([]);
@@ -17,8 +18,10 @@ const openAlerts = ref<Alert[]>([]);
 const openAlertCount = ref(0);
 const loading = ref(true);
 const errorMessage = ref("");
+const nowMilliseconds = ref(Date.now());
 let unsubscribe: () => void = () => undefined;
 let resyncTimer: ReturnType<typeof setTimeout> | null = null;
+let presenceTimer: ReturnType<typeof setInterval> | null = null;
 
 const alertTypeLabels = {
   TemperatureOutOfRange: "溫度超出範圍",
@@ -26,7 +29,8 @@ const alertTypeLabels = {
   DeviceOffline: "設備離線",
 } as const;
 
-const activeCount = computed(() => devices.value.filter((device) => device.isActive).length);
+const onlineCount = computed(() => devices.value
+  .filter((device) => isDeviceOnline(device, nowMilliseconds.value)).length);
 const latestReadings = computed(() =>
   featuredDevices.value
     .map((device) => device.latestTelemetry)
@@ -79,11 +83,34 @@ async function loadDashboard(): Promise<void> {
 }
 
 function handleTelemetry(telemetry: Telemetry): void {
+  devices.value = devices.value.map((device) => {
+    if (device.id !== telemetry.deviceId) return device;
+    const currentLastSeen = device.lastSeenAtUtc
+      ? Date.parse(device.lastSeenAtUtc)
+      : Number.NEGATIVE_INFINITY;
+    if (Date.parse(telemetry.receivedAtUtc) < currentLastSeen) return device;
+    return {
+      ...device,
+      lastSeenAtUtc: telemetry.receivedAtUtc,
+      isOnline: device.isActive,
+    };
+  });
+
   const index = featuredDevices.value.findIndex((device) => device.id === telemetry.deviceId);
   if (index < 0) return;
 
   const current = featuredDevices.value[index];
   if (!current) return;
+  const currentLastSeen = current.lastSeenAtUtc
+    ? Date.parse(current.lastSeenAtUtc)
+    : Number.NEGATIVE_INFINITY;
+  const deviceWithPresence = Date.parse(telemetry.receivedAtUtc) >= currentLastSeen
+    ? {
+        ...current,
+        lastSeenAtUtc: telemetry.receivedAtUtc,
+        isOnline: current.isActive,
+      }
+    : current;
   const recordedAtDifference = current.latestTelemetry
     ? new Date(telemetry.recordedAtUtc).getTime()
       - new Date(current.latestTelemetry.recordedAtUtc).getTime()
@@ -92,10 +119,12 @@ function handleTelemetry(telemetry: Telemetry): void {
     recordedAtDifference < 0 ||
     (recordedAtDifference === 0 && telemetry.id <= current.latestTelemetry.id)
   )) {
+    featuredDevices.value[index] = deviceWithPresence;
     return;
   }
 
-  featuredDevices.value[index] = { ...current, latestTelemetry: telemetry };
+  featuredDevices.value[index] = { ...deviceWithPresence, latestTelemetry: telemetry };
+  nowMilliseconds.value = Date.now();
 }
 
 function handleAlertRaised(alert: Alert): void {
@@ -136,12 +165,16 @@ onMounted(() => {
     onAlertAcknowledged: handleAlertAcknowledged,
     onResynchronize: scheduleResynchronize,
   });
+  presenceTimer = setInterval(() => {
+    nowMilliseconds.value = Date.now();
+  }, 1_000);
   void loadDashboard();
 });
 
 onBeforeUnmount(() => {
   unsubscribe();
   if (resyncTimer) clearTimeout(resyncTimer);
+  if (presenceTimer) clearInterval(presenceTimer);
 });
 </script>
 
@@ -190,8 +223,8 @@ onBeforeUnmount(() => {
         />
         <MetricCard
           label="運作中"
-          :value="activeCount"
-          :hint="`目前頁面 ${devices.length} 台設備`"
+          :value="onlineCount"
+          :hint="`最近 30 秒內有回報，共 ${devices.length} 台設備`"
           tone="teal"
         />
         <MetricCard
@@ -244,7 +277,10 @@ onBeforeUnmount(() => {
               >
                 ◫
               </div>
-              <StatusBadge :active="device.isActive" />
+              <StatusBadge
+                :active="device.isActive"
+                :online="isDeviceOnline(device, nowMilliseconds)"
+              />
             </div>
             <strong>{{ device.name }}</strong>
             <span class="device-id">{{ device.externalId }}</span>

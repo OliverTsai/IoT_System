@@ -671,22 +671,31 @@ h2 {
   border-radius: 50%;
 }
 
-.status-badge--active {
+.status-badge--online {
   color: #176b58;
   background: #e2f4ed;
 }
 
-.status-badge--active span {
+.status-badge--online span {
   background: #2ea47f;
   box-shadow: 0 0 0 3px rgb(46 164 127 / 13%);
 }
 
-.status-badge--inactive {
+.status-badge--offline {
+  color: #8a5a16;
+  background: #fff1d6;
+}
+
+.status-badge--offline span {
+  background: #d8952b;
+}
+
+.status-badge--disabled {
   color: #707b7f;
   background: #edf0ef;
 }
 
-.status-badge--inactive span {
+.status-badge--disabled span {
   background: #8e999b;
 }
 

@@ -2,6 +2,7 @@ using IoTMonitor.Api.Contracts.Common;
 using IoTMonitor.Api.Contracts.Devices;
 using IoTMonitor.Api.Contracts.Telemetry;
 using IoTMonitor.Api.Data;
+using IoTMonitor.Api.Devices;
 using IoTMonitor.Api.Domain.Entities;
 using IoTMonitor.Api.Security;
 using Microsoft.AspNetCore.Authorization;
@@ -68,18 +69,34 @@ public sealed class DevicesController(
     {
         var devices = dbContext.Devices.AsNoTracking();
         var totalCount = await devices.CountAsync(cancellationToken);
-        var items = await devices
+        var deviceRows = await devices
             .OrderByDescending(device => device.CreatedAtUtc)
             .ThenBy(device => device.Id)
             .Skip((query.Page - 1) * query.PageSize)
             .Take(query.PageSize)
+            .Select(device => new
+            {
+                device.Id,
+                device.ExternalId,
+                device.Name,
+                device.IsActive,
+                device.CreatedAtUtc,
+                LastSeenAtUtc = device.TelemetryReadings
+                    .Select(telemetry => (DateTime?)telemetry.ReceivedAtUtc)
+                    .Max()
+            })
+            .ToListAsync(cancellationToken);
+        var nowUtc = timeProvider.GetUtcNow().UtcDateTime;
+        var items = deviceRows
             .Select(device => new DeviceResponse(
                 device.Id,
                 device.ExternalId,
                 device.Name,
                 device.IsActive,
-                device.CreatedAtUtc))
-            .ToListAsync(cancellationToken);
+                device.CreatedAtUtc,
+                device.LastSeenAtUtc,
+                DevicePresence.IsOnline(device.IsActive, device.LastSeenAtUtc, nowUtc)))
+            .ToList();
 
         return Ok(new PagedResponse<DeviceResponse>(
             items,
@@ -118,6 +135,12 @@ public sealed class DevicesController(
                 telemetry.RecordedAtUtc,
                 telemetry.ReceivedAtUtc))
             .FirstOrDefaultAsync(cancellationToken);
+        var lastSeenAtUtc = await dbContext.Telemetry
+            .AsNoTracking()
+            .Where(telemetry => telemetry.DeviceId == deviceId)
+            .MaxAsync(
+                telemetry => (DateTime?)telemetry.ReceivedAtUtc,
+                cancellationToken);
 
         return Ok(new DeviceDetailsResponse(
             device.Id,
@@ -125,6 +148,11 @@ public sealed class DevicesController(
             device.Name,
             device.IsActive,
             device.CreatedAtUtc,
+            lastSeenAtUtc,
+            DevicePresence.IsOnline(
+                device.IsActive,
+                lastSeenAtUtc,
+                timeProvider.GetUtcNow().UtcDateTime),
             latestTelemetry));
     }
 
@@ -149,7 +177,14 @@ public sealed class DevicesController(
         device.IsActive = request.IsActive!.Value;
         await dbContext.SaveChangesAsync(cancellationToken);
 
-        return Ok(ToResponse(device));
+        var lastSeenAtUtc = await dbContext.Telemetry
+            .AsNoTracking()
+            .Where(telemetry => telemetry.DeviceId == deviceId)
+            .MaxAsync(
+                telemetry => (DateTime?)telemetry.ReceivedAtUtc,
+                cancellationToken);
+
+        return Ok(ToResponse(device, lastSeenAtUtc));
     }
 
     private ObjectResult DeviceNotFound(Guid deviceId)
@@ -182,13 +217,18 @@ public sealed class DevicesController(
         return (int)Math.Ceiling(totalCount / (double)pageSize);
     }
 
-    private static DeviceResponse ToResponse(Device device)
+    private DeviceResponse ToResponse(Device device, DateTime? lastSeenAtUtc = null)
     {
         return new DeviceResponse(
             device.Id,
             device.ExternalId,
             device.Name,
             device.IsActive,
-            device.CreatedAtUtc);
+            device.CreatedAtUtc,
+            lastSeenAtUtc,
+            DevicePresence.IsOnline(
+                device.IsActive,
+                lastSeenAtUtc,
+                timeProvider.GetUtcNow().UtcDateTime));
     }
 }

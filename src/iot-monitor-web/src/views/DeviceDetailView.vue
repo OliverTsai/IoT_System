@@ -9,6 +9,7 @@ import TelemetryChart from "../components/TelemetryChart.vue";
 import UiState from "../components/UiState.vue";
 import { monitoringRealtime } from "../realtime/monitoring";
 import { authStore } from "../stores/auth";
+import { isDeviceOnline } from "../utils/devicePresence";
 import { formatDateTime, formatRelativeTime } from "../utils/format";
 
 const props = defineProps<{ deviceId: string }>();
@@ -21,7 +22,9 @@ const errorMessage = ref("");
 const notFound = ref(false);
 const statusError = ref("");
 const isAdmin = authStore.isAdmin;
+const nowMilliseconds = ref(Date.now());
 let unsubscribe: () => void = () => undefined;
+let presenceTimer: ReturnType<typeof setInterval> | null = null;
 
 const latest = computed(() => device.value?.latestTelemetry ?? null);
 
@@ -68,6 +71,18 @@ async function toggleStatus(): Promise<void> {
 function handleTelemetry(telemetry: Telemetry): void {
   if (!device.value || telemetry.deviceId !== device.value.id) return;
 
+  const currentLastSeen = device.value.lastSeenAtUtc
+    ? Date.parse(device.value.lastSeenAtUtc)
+    : Number.NEGATIVE_INFINITY;
+  if (Date.parse(telemetry.receivedAtUtc) >= currentLastSeen) {
+    device.value = {
+      ...device.value,
+      lastSeenAtUtc: telemetry.receivedAtUtc,
+      isOnline: device.value.isActive,
+    };
+    nowMilliseconds.value = Date.now();
+  }
+
   readings.value = [
     telemetry,
     ...readings.value.filter((reading) => reading.id !== telemetry.id),
@@ -100,9 +115,15 @@ onMounted(() => {
     onTelemetry: handleTelemetry,
     onResynchronize: () => void loadDevice(),
   });
+  presenceTimer = setInterval(() => {
+    nowMilliseconds.value = Date.now();
+  }, 1_000);
 });
 
-onBeforeUnmount(() => unsubscribe());
+onBeforeUnmount(() => {
+  unsubscribe();
+  if (presenceTimer) clearInterval(presenceTimer);
+});
 </script>
 
 <template>
@@ -149,7 +170,10 @@ onBeforeUnmount(() => unsubscribe());
           </div>
         </div>
         <div class="device-heading__actions">
-          <StatusBadge :active="device.isActive" />
+          <StatusBadge
+            :active="device.isActive"
+            :online="isDeviceOnline(device, nowMilliseconds)"
+          />
           <button
             v-if="isAdmin"
             class="button button--secondary"

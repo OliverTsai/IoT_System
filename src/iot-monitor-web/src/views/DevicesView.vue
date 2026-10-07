@@ -1,12 +1,14 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from "vue";
 import { RouterLink } from "vue-router";
 import { ApiError, apiClient } from "../api/client";
-import type { Device, PagedResponse } from "../api/types";
+import type { Device, PagedResponse, Telemetry } from "../api/types";
 import StatusBadge from "../components/StatusBadge.vue";
 import UiState from "../components/UiState.vue";
+import { monitoringRealtime } from "../realtime/monitoring";
 import { authStore } from "../stores/auth";
-import { formatDateTime } from "../utils/format";
+import { isDeviceOnline } from "../utils/devicePresence";
+import { formatDateTime, formatRelativeTime } from "../utils/format";
 
 const pageSize = 12;
 const page = ref(1);
@@ -17,6 +19,9 @@ const createOpen = ref(false);
 const creating = ref(false);
 const createError = ref("");
 const form = reactive({ externalId: "", name: "" });
+const nowMilliseconds = ref(Date.now());
+let unsubscribe: () => void = () => undefined;
+let presenceTimer: ReturnType<typeof setInterval> | null = null;
 
 const devices = computed(() => response.value?.items ?? []);
 const isAdmin = authStore.isAdmin;
@@ -80,7 +85,44 @@ async function createDevice(): Promise<void> {
   }
 }
 
-onMounted(loadDevices);
+function handleTelemetry(telemetry: Telemetry): void {
+  if (!response.value) return;
+
+  const index = response.value.items.findIndex((device) => device.id === telemetry.deviceId);
+  if (index < 0) return;
+
+  const current = response.value.items[index];
+  if (!current) return;
+  const currentLastSeen = current.lastSeenAtUtc
+    ? Date.parse(current.lastSeenAtUtc)
+    : Number.NEGATIVE_INFINITY;
+  if (Date.parse(telemetry.receivedAtUtc) < currentLastSeen) return;
+
+  const items = [...response.value.items];
+  items[index] = {
+    ...current,
+    lastSeenAtUtc: telemetry.receivedAtUtc,
+    isOnline: current.isActive,
+  };
+  response.value = { ...response.value, items };
+  nowMilliseconds.value = Date.now();
+}
+
+onMounted(() => {
+  unsubscribe = monitoringRealtime.subscribe({
+    onTelemetry: handleTelemetry,
+    onResynchronize: () => void loadDevices(),
+  });
+  presenceTimer = setInterval(() => {
+    nowMilliseconds.value = Date.now();
+  }, 1_000);
+  void loadDevices();
+});
+
+onBeforeUnmount(() => {
+  unsubscribe();
+  if (presenceTimer) clearInterval(presenceTimer);
+});
 </script>
 
 <template>
@@ -189,7 +231,9 @@ onMounted(loadDevices);
               <tr>
                 <th>設備</th>
                 <th>識別碼</th>
-                <th>狀態</th>
+                <th>連線狀態</th>
+                <th>管理狀態</th>
+                <th>最後回報</th>
                 <th>建立時間</th>
                 <th><span class="sr-only">操作</span></th>
               </tr>
@@ -214,8 +258,17 @@ onMounted(loadDevices);
                 <td data-label="識別碼">
                   <code>{{ device.externalId }}</code>
                 </td>
-                <td data-label="狀態">
-                  <StatusBadge :active="device.isActive" />
+                <td data-label="連線狀態">
+                  <StatusBadge
+                    :active="device.isActive"
+                    :online="isDeviceOnline(device, nowMilliseconds)"
+                  />
+                </td>
+                <td data-label="管理狀態">
+                  {{ device.isActive ? "已啟用" : "已停用" }}
+                </td>
+                <td data-label="最後回報">
+                  {{ device.lastSeenAtUtc ? formatRelativeTime(device.lastSeenAtUtc) : "尚未回報" }}
                 </td>
                 <td data-label="建立時間">
                   {{ formatDateTime(device.createdAtUtc) }}

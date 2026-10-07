@@ -25,7 +25,9 @@ public sealed record DeviceResponse(
     string ExternalId,
     string Name,
     bool IsActive,
-    DateTime CreatedAtUtc);
+    DateTime CreatedAtUtc,
+    DateTime? LastSeenAtUtc,
+    bool IsOnline);
 
 public sealed record DeviceDetailsResponse(
     Guid Id,
@@ -33,6 +35,8 @@ public sealed record DeviceDetailsResponse(
     string Name,
     bool IsActive,
     DateTime CreatedAtUtc,
+    DateTime? LastSeenAtUtc,
+    bool IsOnline,
     TelemetryResponse? LatestTelemetry);
 
 public sealed class DeviceListQuery

@@ -9,7 +9,7 @@ Docker Compose 會整合 PostgreSQL、Eclipse Mosquitto、ASP.NET Core API、Vue
 | `web` | 8080 / 8443 | 8080 / 8443 | Vue 靜態檔、HTTPS、REST/SignalR reverse proxy。 |
 | `api` | 8080 | 未發布 | Web API、MQTT subscriber、SignalR、migration。 |
 | `postgres` | 5432 | 5433 | PostgreSQL；host port 只綁 `127.0.0.1`。 |
-| `mosquitto` | 1883 | 1883 | MQTT broker；host port 只綁 `127.0.0.1`。 |
+| `mosquitto` | 1883 | 1883 | MQTT broker；預設只綁 `127.0.0.1`，可明確設定區網介面供同 Wi-Fi 設備測試。 |
 | `simulator` | — | — | 持續發布 `sim-device-*` 遙測。 |
 
 啟動順序由 health condition 控制：PostgreSQL／Mosquitto → API → Web／Simulator。API 健康前已完成 migration、Bootstrap Admin 與 demo device seed。
@@ -42,6 +42,7 @@ Nginx 映像在 build 時產生 localhost 自簽憑證，第一次使用時瀏�
 - `Authentication:BootstrapAdmin:Enabled=true`：只有在 username 不存在時建立 Admin，不會覆寫既有密碼。
 - `DemoData:Enabled=true`：建立與模擬器相符的設備；重啟時只補缺少的設備。
 - API 訂閱 `devices/+/telemetry`，模擬器等 API healthy 後才開始發布。
+- 設備最近 30 秒內有有效遙測便視為運作中；管理員啟用狀態與連線狀態分開顯示。
 - Data Protection key 寫入 `data_protection_keys` volume，容器重建不會立即使既有 Cookie 失效。
 
 應用程式的 `appsettings.json` 預設關閉 migration 與 demo seed；只有 Compose 明確開啟。
@@ -102,7 +103,7 @@ docker compose down --volumes
 - 自製容器設定 `read_only`、`cap_drop: ALL`、`no-new-privileges`，只開放必要的 tmpfs／volume。
 - API port 只在 Compose network 內 expose；外部 REST 與 SignalR 必須經過 Nginx HTTPS。
 - Nginx 負責 TLS termination 與 HTTP→HTTPS redirect；Compose 以 `ReverseProxy__TerminatesTls=true` 關閉 API 對內部 HTTP 的重複轉向。
-- PostgreSQL 與 MQTT host port 只綁 loopback，避免直接暴露到區域網路。
+- PostgreSQL host port 與 MQTT 預設 host port 只綁 loopback；只有同 Wi-Fi 手機測試時才應將 `MQTT_BIND_ADDRESS` 設為電腦私有 IPv4。
 - Broker 禁止匿名使用者，密碼檔只存在容器的 `/tmp`。
 - Nginx 設定 CSP、frame denial、MIME sniffing protection 與 referrer policy。
 - Log 使用 rotation，避免本機長期執行無限制成長。
@@ -160,3 +161,10 @@ docker compose logs mosquitto api simulator
 ```
 
 `DEMO_DATA_ENABLED`、`SIMULATOR_DEVICE_PREFIX` 與 `SIMULATOR_DEVICE_COUNT` 必須匹配。API 只接受已存在且啟用的設備。
+
+### 手機無法連線 MQTT
+
+- 手機 MQTT client 應連電腦的私有 IPv4 與 port `1883`；`8080`／`8083` 是網站 HTTP port，不是 MQTT。
+- 確認 `.env` 的 `MQTT_BIND_ADDRESS` 已設定為該私有 IPv4，並已 force recreate Mosquitto。
+- 確認 Windows 防火牆允許私人網路 TCP 1883，且 Wi-Fi 沒有啟用會隔離裝置的 guest/client isolation。
+- MQTT username/password 必須與 `.env` 相同；目前區網測試未啟用 TLS。
