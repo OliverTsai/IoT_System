@@ -1,13 +1,13 @@
 # 專案進度與 AI 交接
 
-最後更新：2026-10-07
+最後更新：2026-10-12
 
 ## 目前閘門
 
 - Current phase：`9 - 區域網路 MQTT 設備上線狀態`
 - State：`awaiting_review`
 - Owner action：使用者審查階段 9 的程式碼，並以同一 Wi-Fi 手機執行一次實機 MQTT 發布；確認後由使用者自行提交，或明確要求 AI 提交。
-- Next phase：無；後續若要自行開發手機 App、加入 MQTT over WebSocket 或 TLS，需另立新階段。
+- Next phase：`10 - 可擴充通訊協定接入架構`；只有階段 9 經使用者驗收並提交後才能開始。
 
 狀態定義：
 
@@ -31,6 +31,26 @@
 | 7 | 告警與即時更新 | `accepted` |
 | 8 | 完整容器化、品質與作品集整理 | `accepted` |
 | 9 | 區域網路 MQTT 設備上線狀態 | `awaiting_review` |
+| 10 | 可擴充通訊協定接入架構 | `not_started` |
+| 11 | Modbus TCP 垂直切片 | `not_started` |
+
+## 後續階段目標（尚未實作）
+
+### 階段 10：可擴充通訊協定接入架構
+
+- 進度：`not_started`；需先完成階段 9 的手機實機驗收、使用者審查及提交。
+- 目標：將 MQTT 收件流程整理成可由 DI 註冊的 protocol adapter／registry／coordinator，沿用現有 `TelemetryIngestionService`；設備保存協定 key 與 adapter 驗證過的設定，既有資料及省略新欄位的請求預設為 `mqtt`。
+- 前端：由後端支援協定目錄產生新增設備的協定選單與非敏感設定欄位，讓 Admin 在建立時選擇；本階段不處理既有設備在線切換協定。
+- 最小範圍：先只把既有 MQTT 行為搬到擴充點，不重寫遙測、告警、SignalR 或 REST 寫入流程，也不提前加入 Modbus 實作。
+- 審查驗證：重點檢查 migration 向後相容、未知協定／無效設定拒絕、非 MQTT 設備的 MQTT 訊息不寫入、adapter 故障隔離，以及新增測試 adapter 不必修改 coordinator 或 MQTT 程式。
+
+### 階段 11：Modbus TCP 垂直切片
+
+- 進度：`not_started`；只有階段 10 進入 `awaiting_review`、經使用者審查提交並明確要求繼續後才能開始。
+- 目標：新增 `modbus-tcp` adapter，輪詢啟用設備的 holding registers，將溫度／濕度正規化後送入既有資料流；不把 Modbus RTU 納入此階段。
+- 測試方式：以本機可決定性 Modbus TCP server／fixture 回傳固定 registers，驗證正常讀取、timeout、斷線、非法回應、停用設備、重連及 MQTT 並行運作。
+- 安全邊界：限制允許目的地、register 範圍、timeout、輪詢頻率及並行數；協定設定與 log 不保存或輸出秘密。若需加入正式相依套件，開始實作前另行提出版本與替代方案取得同意。
+- 審查驗證：端對端核對 register 位址、資料型別、byte order、signedness 與縮放；確認 Modbus 故障不寫入錯誤資料、不拖垮 MQTT，且 REST、SignalR、告警與上線判定維持相容。
 
 ## 本階段完成內容
 
@@ -88,3 +108,4 @@
 2. 執行 `git status --short --branch` 及 `git log -1 --oneline`。
 3. 階段 9 目前為 `awaiting_review`；除非使用者提出審查修正，不得繼續擴張功能或自行提交。
 4. 使用者需完成同 Wi-Fi 手機 MQTT 實機驗收；確認並提交後可將階段 9 改為 `accepted`。
+5. 只有在階段 9 已提交且使用者明確要求繼續時，才可將階段 10 改為 `in_progress`；不得提前實作階段 11 的 Modbus TCP。

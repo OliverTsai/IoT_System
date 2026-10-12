@@ -211,6 +211,75 @@ docs/
 - Broker 的區域網路綁定需明確設定；預設設定不會擴大既有網路暴露面。
 - 後端 build／test 與前端 type-check／lint／test／build 通過。
 
+## 階段 10：可擴充通訊協定接入架構
+
+目標：
+
+- 以最小重構將目前僅支援 MQTT 的接收流程整理為可註冊的通訊協定 adapter；新增協定時不需要修改既有 adapter 或共用遙測寫入流程。
+- 讓 Admin 在前端建立設備時，能從後端提供的協定清單選擇該設備的通訊協定。
+
+範圍：
+
+- 在設備資料加入穩定的協定 key 與協定設定 JSON；既有資料 migration 回填為 `mqtt`，且新建設備未指定時仍以 `mqtt` 相容既有 API 呼叫端。
+- 定義小型 `IDeviceTelemetryProtocolAdapter` 契約與 registry／coordinator。每個 adapter 負責協定描述、設定驗證及接收生命週期；共用的資料持久化、告警與 SignalR 仍沿用 `TelemetryIngestionService`。
+- 將現有 MQTT background service、parser 與 processor 收斂為第一個 adapter，保留既有 topic、payload、QoS、重連與 message ID 去重行為。
+- MQTT 訊息只能寫入協定為 `mqtt` 且已啟用的設備，避免不同協定共用 external id 時發生錯誤路由。
+- 提供唯讀的支援協定目錄 API，回傳穩定 key、顯示名稱與建立設備所需的非敏感欄位描述；前端建立表單由此產生協定選單及設定欄位，不硬編碼協定清單。
+- 設備建立、列表與詳情契約回傳協定 key；只有 Admin 可提交協定設定，回應與 log 不得洩漏秘密值。
+- 本階段只支援「建立時選擇協定」，不實作既有設備在線切換協定；REST 遙測端點保留為管理／測試入口，不視為設備的可選通訊協定。
+- 補上 migration、registry／coordinator、MQTT 相容性、API 驗證與前端建立表單測試，並更新 API、前端與通訊協定開發文件。
+
+驗收條件：
+
+- 既有設備與未帶新欄位的建立請求皆維持 `mqtt`，原有 MQTT、REST、告警、SignalR 及設備上線判定測試通過。
+- Admin 可在新增設備表單看到後端公布的協定並建立 MQTT 設備；Viewer／Operator 無法藉由新端點修改設備設定。
+- 未知協定 key、格式錯誤或不符合 adapter 規則的設定會回傳一致的 validation response，且不會寫入資料庫。
+- coordinator 可透過 DI 發現 adapter；使用測試 adapter 證明新增協定不需修改 coordinator 或 MQTT adapter，且單一 adapter 失敗不會停止其他 adapter。
+- MQTT 收到指向非 MQTT、未知或停用設備的訊息時會拒絕寫入並留下不含秘密的可診斷紀錄。
+- migration 可在既有資料庫套用，且回退前已明確說明 JSON 設定欄位的資料影響；repository 不含設備密碼、Token 或真實端點秘密。
+- 後端 build／test 與前端 type-check／lint／test／build 通過，既有 MQTT smoke test 維持成功。
+
+審查與驗證方向：
+
+1. 檢查協定抽象是否只處理接入差異，沒有複製資料庫寫入、告警或 SignalR 邏輯。
+2. 以測試 adapter 實際驗證擴充點，確認新增協定的必要變更集中在新 adapter、DI 註冊與必要文件。
+3. 由前端建立未明確選擇及明確選擇 MQTT 的設備，確認預設值、API response、列表與詳情一致。
+4. 對未知 key、無效 JSON、非 MQTT 設備發布 MQTT 及 adapter 例外進行負向測試，確認不會誤寫或拖垮其他接收流程。
+5. 審查協定設定的輸出與 log，確認秘密欄位不回傳、不記錄；未來若協定需要憑證，只保存 secret reference，不把秘密直接存入 JSON。
+
+## 階段 11：Modbus TCP 垂直切片
+
+目標：
+
+- 透過階段 10 的擴充點加入第二個實際通訊協定，以可重現的 Modbus TCP 測試證明架構可用，而不是只建立抽象層。
+
+範圍：
+
+- 以 `modbus-tcp` 作為第二個協定；本階段不處理需要實體序列埠的 Modbus RTU。
+- 新增 Modbus TCP adapter，定期輪詢指派給它且已啟用的設備，讀取溫度與濕度 holding registers，正規化後交由既有 `TelemetryIngestionService`。
+- 協定設定至少包含 host、port、unit id、溫度／濕度 register 位址與縮放倍率；輪詢週期、timeout、重試及最大並行數由伺服器端設定限制，不允許前端提供無界值。
+- 對可連線目的地加入明確 allowlist／網段限制，限制 payload、register 範圍與連線時間；失敗時不得寫入部分或預設遙測，也不得在 log 洩漏敏感設定。
+- 在協定目錄公布 Modbus TCP 的非敏感欄位描述，讓同一個設備建立表單可選擇 `modbus-tcp` 並輸入必要設定。
+- 建立可決定性回傳 registers 的本機測試伺服器／fixture，涵蓋正常讀取、timeout、斷線重連、非法回應與設備停用；若加入正式環境套件，實作前須先提出用途、版本、替代方案及維護風險並取得使用者同意。
+- 更新 Docker Compose smoke test 或提供等價的一鍵本機驗證流程，並更新架構圖、設定範例與 Modbus TCP 操作文件。
+
+驗收條件：
+
+- Admin 可由前端建立 Modbus TCP 設備，無效 endpoint、unit id、register 或縮放設定會在建立時被拒絕。
+- 本機測試伺服器提供已知 register 值後，adapter 能輪詢並寫入正確的溫度／濕度；資料可由既有 REST API 查詢，前端亦能透過既有 SignalR 流程即時更新。
+- 停用設備後不再輪詢；timeout、連線中斷或格式錯誤只影響該設備，不寫入錯誤資料，也不停止 MQTT 或其他 Modbus 設備。
+- 未在 allowlist 的目的地不會發起連線；測試及 log 不包含真實設備位址、密碼或其他秘密。
+- 既有 MQTT 設備、模擬器、REST 寫入、告警與 30 秒上線狀態行為沒有迴歸。
+- 後端 build／test、前端 type-check／lint／test／build，以及包含 MQTT、Modbus TCP、PostgreSQL 的 smoke test 通過。
+
+審查與驗證方向：
+
+1. 先以固定 register 值做端對端驗收，逐項核對位址、資料型別、byte order、signedness 與縮放結果。
+2. 模擬 timeout、斷線、短封包、錯誤 transaction／unit id 與非法值，確認錯誤隔離、重試節流及取消權杖均正確。
+3. 同時運行 MQTT 與 Modbus TCP 測試設備，確認兩者各自寫入正確設備，且任一協定失敗不影響另一協定。
+4. 檢查輪詢查詢與連線數是否有上限，停用或刪除設備後是否及時停止輪詢，避免背景工作洩漏。
+5. 審查目的地 allowlist、設定遮蔽與相依套件決策；確認目前結果只宣稱支援 Modbus TCP，不誤稱已支援 Modbus RTU 或完整功能碼集合。
+
 ## 變更計畫的規則
 
 - 階段順序或技術選擇需要調整時，先說明原因、影響與替代方案。
