@@ -1,4 +1,5 @@
 using IoTMonitor.Api.Domain.Entities;
+using IoTMonitor.Api.Domain;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
@@ -28,6 +29,21 @@ public sealed class DeviceConfiguration : IEntityTypeConfiguration<Device>
             .HasColumnName("name")
             .HasMaxLength(200)
             .IsRequired();
+
+        builder.Property(device => device.ProtocolKey)
+            .HasColumnName("protocol_key")
+            .HasMaxLength(50)
+            .HasDefaultValue(DeviceProtocolKeys.Mqtt)
+            .IsRequired();
+
+        builder.Property(device => device.ProtocolSettingsJson)
+            .HasColumnName("protocol_settings")
+            .HasColumnType("jsonb")
+            .HasDefaultValueSql("'{}'::jsonb")
+            .IsRequired();
+
+        builder.HasIndex(device => new { device.ProtocolKey, device.IsActive })
+            .HasDatabaseName("ix_devices_protocol_key_is_active");
 
         builder.Property(device => device.IsActive)
             .HasColumnName("is_active")

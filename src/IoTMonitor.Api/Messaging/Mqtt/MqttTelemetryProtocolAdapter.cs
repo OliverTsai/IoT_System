@@ -1,19 +1,55 @@
 using System.Buffers;
+using System.Text.Json;
+using IoTMonitor.Api.Domain;
+using IoTMonitor.Api.Messaging.Protocols;
 using Microsoft.Extensions.Options;
 using MQTTnet;
 using MQTTnet.Protocol;
 
 namespace IoTMonitor.Api.Messaging.Mqtt;
 
-public sealed class MqttTelemetryBackgroundService(
+public sealed class MqttTelemetryProtocolAdapter(
     IOptions<MqttOptions> options,
     MqttTelemetryProcessor processor,
-    ILogger<MqttTelemetryBackgroundService> logger) : BackgroundService
+    ILogger<MqttTelemetryProtocolAdapter> logger) : IDeviceTelemetryProtocolAdapter
 {
     private readonly MqttOptions _options = options.Value;
     private CancellationToken _stoppingToken;
 
-    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    public DeviceProtocolDescriptor Descriptor { get; } = new(
+        DeviceProtocolKeys.Mqtt,
+        "MQTT",
+        [],
+        true);
+
+    public bool IsEnabled => _options.Enabled;
+
+    public DeviceProtocolSettingsValidationResult ValidateSettings(JsonElement? settings)
+    {
+        if (settings is null ||
+            settings.Value.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
+        {
+            return DeviceProtocolSettingsValidationResult.Valid("{}");
+        }
+
+        if (settings.Value.ValueKind != JsonValueKind.Object)
+        {
+            return DeviceProtocolSettingsValidationResult.Invalid(
+                "ProtocolSettings",
+                "MQTT protocol settings must be a JSON object.");
+        }
+
+        if (settings.Value.EnumerateObject().Any())
+        {
+            return DeviceProtocolSettingsValidationResult.Invalid(
+                "ProtocolSettings",
+                "MQTT does not accept per-device protocol settings.");
+        }
+
+        return DeviceProtocolSettingsValidationResult.Valid("{}");
+    }
+
+    public async Task RunAsync(CancellationToken stoppingToken)
     {
         if (!_options.Enabled)
         {

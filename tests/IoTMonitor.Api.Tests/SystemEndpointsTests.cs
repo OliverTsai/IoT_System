@@ -84,6 +84,7 @@ public sealed class SystemEndpointsTests(IoTMonitorApiFactory factory)
         Assert.True(createDeviceResponses.TryGetProperty("409", out _));
         Assert.True(paths.TryGetProperty("/api/devices/{deviceId}", out _));
         Assert.True(paths.TryGetProperty("/api/devices/{deviceId}/status", out _));
+        Assert.True(paths.TryGetProperty("/api/device-protocols", out _));
         Assert.True(paths.TryGetProperty("/api/devices/{deviceId}/telemetry", out _));
         Assert.True(paths.TryGetProperty("/api/devices/{deviceId}/telemetry/latest", out _));
         Assert.True(paths.TryGetProperty("/api/auth/csrf", out _));

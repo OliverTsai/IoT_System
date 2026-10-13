@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using System.Text.Json;
 using IoTMonitor.Api.Contracts.Telemetry;
 
 namespace IoTMonitor.Api.Contracts.Devices;
@@ -15,7 +16,13 @@ public sealed record CreateDeviceRequest(
     [RegularExpression(
         @"^(?=.*\S)[^\r\n]+$",
         ErrorMessage = "Name must contain a non-whitespace character and cannot contain a line break.")]
-    string? Name);
+    string? Name,
+    [StringLength(50, MinimumLength = 1)]
+    [RegularExpression(
+        @"^[a-z0-9][a-z0-9-]*$",
+        ErrorMessage = "ProtocolKey must be a lowercase kebab-case identifier.")]
+    string? ProtocolKey = null,
+    JsonElement? ProtocolSettings = null);
 
 public sealed record UpdateDeviceStatusRequest(
     [Required] bool? IsActive);
@@ -24,6 +31,7 @@ public sealed record DeviceResponse(
     Guid Id,
     string ExternalId,
     string Name,
+    string ProtocolKey,
     bool IsActive,
     DateTime CreatedAtUtc,
     DateTime? LastSeenAtUtc,
@@ -33,6 +41,7 @@ public sealed record DeviceDetailsResponse(
     Guid Id,
     string ExternalId,
     string Name,
+    string ProtocolKey,
     bool IsActive,
     DateTime CreatedAtUtc,
     DateTime? LastSeenAtUtc,

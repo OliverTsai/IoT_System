@@ -1,13 +1,13 @@
 # 專案進度與 AI 交接
 
-最後更新：2026-10-12
+最後更新：2026-10-13
 
 ## 目前閘門
 
-- Current phase：`9 - 區域網路 MQTT 設備上線狀態`
+- Current phase：`10 - 可擴充通訊協定接入架構`
 - State：`awaiting_review`
-- Owner action：使用者審查階段 9 的程式碼，並以同一 Wi-Fi 手機執行一次實機 MQTT 發布；確認後由使用者自行提交，或明確要求 AI 提交。
-- Next phase：`10 - 可擴充通訊協定接入架構`；只有階段 9 經使用者驗收並提交後才能開始。
+- Owner action：使用者以一般瀏覽器信任 localhost 開發憑證後，審查階段 10 的 adapter 邊界、migration、API 與前端表單；PostgreSQL 與運行中容器的端對端驗證已完成，審查後由使用者自行提交，或明確要求 AI 提交。
+- Next phase：`11 - Modbus TCP 垂直切片`；只有階段 10 經使用者驗收並提交後才能開始。
 
 狀態定義：
 
@@ -30,19 +30,11 @@
 | 6 | Vue 3 RWD 儀表板 | `accepted` |
 | 7 | 告警與即時更新 | `accepted` |
 | 8 | 完整容器化、品質與作品集整理 | `accepted` |
-| 9 | 區域網路 MQTT 設備上線狀態 | `awaiting_review` |
-| 10 | 可擴充通訊協定接入架構 | `not_started` |
+| 9 | 區域網路 MQTT 設備上線狀態 | `accepted` |
+| 10 | 可擴充通訊協定接入架構 | `awaiting_review` |
 | 11 | Modbus TCP 垂直切片 | `not_started` |
 
 ## 後續階段目標（尚未實作）
-
-### 階段 10：可擴充通訊協定接入架構
-
-- 進度：`not_started`；需先完成階段 9 的手機實機驗收、使用者審查及提交。
-- 目標：將 MQTT 收件流程整理成可由 DI 註冊的 protocol adapter／registry／coordinator，沿用現有 `TelemetryIngestionService`；設備保存協定 key 與 adapter 驗證過的設定，既有資料及省略新欄位的請求預設為 `mqtt`。
-- 前端：由後端支援協定目錄產生新增設備的協定選單與非敏感設定欄位，讓 Admin 在建立時選擇；本階段不處理既有設備在線切換協定。
-- 最小範圍：先只把既有 MQTT 行為搬到擴充點，不重寫遙測、告警、SignalR 或 REST 寫入流程，也不提前加入 Modbus 實作。
-- 審查驗證：重點檢查 migration 向後相容、未知協定／無效設定拒絕、非 MQTT 設備的 MQTT 訊息不寫入、adapter 故障隔離，以及新增測試 adapter 不必修改 coordinator 或 MQTT 程式。
 
 ### 階段 11：Modbus TCP 垂直切片
 
@@ -54,39 +46,47 @@
 
 ## 本階段完成內容
 
-- `DeviceResponse` 與 `DeviceDetailsResponse` 新增 `lastSeenAtUtc`、`isOnline`；由現有 telemetry 的最新 `received_at_utc` 計算，不新增資料表或 migration。
-- 新增共用 `DevicePresence` 規則：已啟用設備在最近 30 秒內有有效遙測即為上線，否則為離線。
-- Vue 將管理狀態與連線狀態分開顯示；設備列表新增最後回報時間，總覽的「運作中」改為實際近期有回報的設備數。
-- 設備列表、總覽及明細沿用 `TelemetryReceived` SignalR 事件即時更新最後回報；前端每秒重新判定，超過 30 秒不需重新整理即可轉為離線。
-- Mosquitto host port 改由 `MQTT_BIND_ADDRESS` 控制，預設仍是 `127.0.0.1`；使用者可明確設定電腦私有 IPv4 供同 Wi-Fi 手機測試。
-- 補上 API 整合測試、後端／前端單元測試，以及手機 MQTT Client 的 host、port、topic、payload、防火牆與還原操作文件。
-- 更新 README、完整容器文件、MQTT 文件、實作計畫及 `.env.example`；未加入新正式相依套件。
+- 新增 `IDeviceTelemetryProtocolAdapter`、`DeviceProtocolRegistry` 與 `ProtocolIngestionCoordinator`；協定由 DI 發現，單一 adapter 結束或失敗不會停止其他 adapter，並會在節流後重啟。
+- 將原有 MQTT background service 改為第一個 protocol adapter，保留 broker 連線、訂閱、QoS、重連、payload 解析及 message ID 去重；資料寫入、告警與 SignalR 仍只走既有 `TelemetryIngestionService`。
+- 設備新增 `protocol_key` 與 `protocol_settings` JSONB migration；既有資料與未帶新欄位的 request 預設為 `mqtt`／空物件，並建立 `(protocol_key, is_active)` index。
+- 新增受保護的 `GET /api/device-protocols` 目錄，回傳 key、顯示名稱、預設值及非敏感欄位描述；設定上限為 16 KiB，由 adapter 驗證並正規化，設備 response 與 log 不輸出設定 JSON。
+- 設備建立 API 驗證未知協定及協定設定；MQTT processor 會拒絕指向非 MQTT、未知或停用設備的訊息。REST 遙測入口維持相容，不視為可選設備協定。
+- Vue 新增設備表單由後端目錄產生協定選單與設定欄位，設備列表及明細顯示協定；目前只支援建立時選擇，不提供既有設備在線切換。
+- 新增 registry、coordinator、MQTT 設定與路由、API 契約、前端表單及 API client 測試；更新 README、API、前端、MQTT 與協定擴充文件，未新增正式相依套件。
+- PostgreSQL 實測發現 `timestamp with time zone` 為微秒精度；設備上線測試改以 1 微秒容差比較 API 寫入回應與重新查詢結果，避免把資料庫正常的精度截斷誤判為資料錯誤。
 
 ## 本階段驗證
 
-- [x] `docker compose --env-file .env.example config --quiet` 通過，新的 bind address 插值語法正確。
 - [x] `dotnet format IoTMonitor.slnx --verify-no-changes --no-restore` 通過。
 - [x] `dotnet build IoTMonitor.slnx -c Release --no-restore` 成功：0 warnings、0 errors。
-- [x] 使用現有 PostgreSQL 執行完整 `dotnet test`：57 passed、0 failed、0 skipped；包含 30 秒上線／離線 API 整合測試。
+- [x] 未連 PostgreSQL 的 `dotnet test IoTMonitor.slnx -c Release --no-build --no-restore`：42 passed、0 failed、23 skipped；registry、coordinator、MQTT adapter 與 OpenAPI 測試通過。
+- [x] `dotnet ef migrations script AddAuthenticationSecurity AddDeviceProtocolArchitecture ...` 成功產生向前 SQL，既有資料會回填 `mqtt` 與空 JSON 物件。
+- [x] `dotnet ef migrations has-pending-model-changes ...` 回報沒有 migration 之後的模型變更。
 - [x] `npm run type-check` 與 `npm run lint` 通過。
-- [x] `npm run test` 通過：4 test files、9 tests passed。
+- [x] `npm run test` 通過：5 test files、11 tests passed；包含協定目錄驅動的設備建立表單。
 - [x] `npm run build` 通過：76 modules transformed，production assets 成功產生。
-- [x] API 與 Vue/Nginx 映像成功重建，PostgreSQL、Mosquitto、API、Web、Simulator 全部維持 healthy／running。
-- [x] `scripts/smoke-test.ps1` 通過：HTTPS、Authentication、REST、SignalR negotiation、MQTT 與 PostgreSQL 端對端鏈路正常。
-- [x] 重建後 API 成功訂閱 `devices/+/telemetry`；API／Web logs 沒有啟動錯誤或未處理例外。
-- [x] `git diff --check` 沒有 whitespace error；僅顯示 Windows 工作目錄的 LF→CRLF 提示。
-- [ ] 尚未由實體手機跨 Wi-Fi 發布；需由使用者依 `docs/MQTT_DEVELOPMENT.md` 完成最終人工驗收。
+- [x] 以 `127.0.0.1:5433` 的 PostgreSQL 執行完整 `dotnet test IoTMonitor.slnx -c Release --no-restore`：65 passed、0 failed、0 skipped；暫存資料庫實際套用全部 migration。
+- [x] 對運行中的 `https://localhost:8443` 容器登入、讀取協定目錄並建立 `stage10-sql-20261012221522`；API 列表／詳情皆回傳 `mqtt` 且未輸出設定，再直接查 PostgreSQL 確認 `protocol_key=mqtt`、`protocol_settings={}`。
+- [x] 以等價 smoke 流程驗證容器 health、Vue/CSP、Authentication、REST、協定目錄、SignalR negotiate、MQTT simulator 與 PostgreSQL 遙測全數通過；容器前端 bundle 亦包含 `/api/device-protocols` 與 `protocolKey`。
+- [ ] `scripts/smoke-test.ps1` 本身在目前 Codex shell 的 Windows Schannel 回報 `SEC_E_NO_CREDENTIALS`，因此改用 Python OpenSSL 執行相同端點流程；應在使用者的一般 PowerShell 再確認腳本本身。Docker Desktop 正在執行，但此 shell 仍找不到 Docker CLI，未由 CLI 再次重建映像。
+- [ ] Codex 內嵌瀏覽器會拒絕容器的 localhost 自簽憑證，依安全規範不能代為略過警告；Admin 前端表單的最後視覺操作需由使用者在已信任憑證的一般瀏覽器確認。
 
 ## 建議審查重點
 
-1. 確認新建但未回報的設備顯示「離線」，不是「運作中」。
-2. 確認 simulator 每五秒回報時顯示「運作中」，停止 simulator 超過 30 秒後自動顯示「離線」。
-3. 暫時將 `.env` 的 `MQTT_BIND_ADDRESS` 設為電腦私有 IPv4，依 `docs/MQTT_DEVELOPMENT.md` 使用手機 MQTT Client 發布一筆資料。
-4. 確認手機 topic 中的 external id 必須先由 Admin 建立，未知或停用設備仍會被 API 拒絕。
-5. 實機驗收後將 bind address 還原為 `127.0.0.1`，再由使用者提交；AI 尚未 commit。
+1. 檢查 adapter 是否只處理接入與設定差異，沒有複製 `TelemetryIngestionService` 的資料庫、告警或 SignalR 邏輯。
+2. 審查 migration 的 Up／Down：Up 已由完整 PostgreSQL 測試與運行中資料庫驗證；Down 會刪除協定設定資料，回退前仍須確認可捨棄或已備份。
+3. 由 Admin 使用前端以預設及明確 MQTT 建立設備，確認目錄載入、列表／明細顯示與 validation Problem Details；Viewer／Operator 只能讀取目錄。
+4. 發布 MQTT 到 MQTT、非 MQTT、未知及停用設備，確認只有第一種會寫入；再模擬 adapter 例外確認其他 adapter 不受影響。
+5. 審查 API response、validation 與 log，確認沒有輸出 `protocol_settings`；完整 PostgreSQL 與等價容器 smoke 已通過，提交前再以一般 PowerShell／瀏覽器確認原始 smoke script 與畫面操作。
 
 ## 已知事項與風險
 
+- 階段 10 目前只有 MQTT adapter；Modbus TCP 尚未實作，必須等階段 10 經審查提交後才能開始階段 11。
+- 設備協定只能在建立時選擇；`protocol_settings` 不由 API 回傳。未來若需修改或切換，必須另外定義停用、驗證及背景工作交接流程。
+- PostgreSQL、migration、容器 API 與 MQTT smoke 已在真實本機基礎設施驗證；為保留可複查證據，資料庫目前留有測試設備 `stage10-sql-20261012221522`。
+- 目前 Codex shell 仍沒有 Docker CLI；`scripts/smoke-test.ps1` 又受 Windows Schannel `SEC_E_NO_CREDENTIALS` 影響，但相同 HTTPS／Authentication／REST／SignalR／MQTT／PostgreSQL 流程已用 Python OpenSSL 通過。這是驗證工具環境差異，仍建議使用者在一般 PowerShell 重跑原始腳本。
+- 階段 9 的同 Wi-Fi 手機 MQTT 發布未由本輪 AI 親自驗證；使用者指示進入階段 10 時，階段 9 程式碼已存在提交 `b41f49d`。
+- `AddDeviceProtocolArchitecture` 的 Down migration 會刪除協定 key 與設定資料；只可在確認資料可捨棄或已備份時回退。
 - Nginx 映像使用 build 時產生的 localhost 自簽憑證，只適合本機展示；正式部署必須改用受信任憑證或平台 TLS ingress。
 - MQTT 尚未啟用 TLS；PostgreSQL host port 固定綁 `127.0.0.1`，broker 預設也綁 loopback，但可明確改綁私有 IPv4 供同 Wi-Fi 測試，不可直接照搬到公網環境。
 - Compose 透過 environment 傳遞密碼，Data Protection key 存於 Docker volume 但未由 KMS 加密；正式環境應使用 secret manager 與受保護的 key storage。
@@ -97,8 +97,8 @@
 - 此階段的「上線」代表最近 30 秒內有成功寫入的遙測，不代表 broker TCP session；單純連線但未發布資料仍顯示離線。
 - 30 秒門檻目前是前後端共用的固定值；若未來提供可設定的發布間隔，應將門檻改為共享設定或由 API 回傳有效期限。
 - 手機測試仍使用共用 MQTT 帳密與未加密 1883，只適合可信任區網；正式設備接入需加入 TLS、每設備認證與 topic ACL。
-- 本機 `5432` 已由其他專案使用，因此範例 PostgreSQL host port 為 `5433`。
-- Codex shell 未繼承 Docker／.NET PATH；自動驗證使用已確認的完整執行檔路徑，不影響一般 PowerShell 使用者環境。
+- 範例 PostgreSQL host port 維持 `5433` 以避免既有環境衝突；本輪已確認 `127.0.0.1:5433` 可連線並完成整合測試與直接 SQL 查詢。
+- 本輪 Codex shell 可直接使用 .NET 與 Node.js 工具，但沒有可用的 Docker CLI；Docker Desktop 程序及既有 Compose runtime 正常，不影響一般已安裝 Docker CLI 的 PowerShell 環境。
 
 ## 恢復工作檢查表
 
@@ -106,6 +106,6 @@
 
 1. 閱讀 `AGENTS.md`、`docs/IMPLEMENTATION_PLAN.md` 與本檔案。
 2. 執行 `git status --short --branch` 及 `git log -1 --oneline`。
-3. 階段 9 目前為 `awaiting_review`；除非使用者提出審查修正，不得繼續擴張功能或自行提交。
-4. 使用者需完成同 Wi-Fi 手機 MQTT 實機驗收；確認並提交後可將階段 9 改為 `accepted`。
-5. 只有在階段 9 已提交且使用者明確要求繼續時，才可將階段 10 改為 `in_progress`；不得提前實作階段 11 的 Modbus TCP。
+3. 階段 10 目前為 `awaiting_review`；只能回答問題或修正本階段，不得提前實作階段 11。
+4. PostgreSQL 完整測試與容器等價 smoke 已通過；使用者以一般 PowerShell 重跑 `scripts/smoke-test.ps1`，並在信任 localhost 開發憑證的瀏覽器完成前端表單視覺驗收。
+5. 使用者審查並提交階段 10 後，仍須明確要求繼續，才可將階段 11 改為 `in_progress`；若 Modbus 實作需要正式套件，必須先取得同意。

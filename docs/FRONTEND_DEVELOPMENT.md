@@ -55,7 +55,7 @@ Operator 的 REST 遙測寫入權限目前沒有對應的瀏覽器表單；設�
 ## 畫面與資料範圍
 
 - 總覽：設備數量、啟用數量、最新平均溫度／濕度及最近設備。
-- 設備：分頁清單；Admin 可新增設備。
+- 設備：分頁清單；Admin 可從後端協定目錄選擇通訊協定並新增設備。
 - 設備明細：最新量測、最近 50 筆趨勢與歷史表格；Admin 可切換設備狀態。
 - 告警：可依確認狀態與嚴重程度篩選；Operator／Admin 可確認告警。
 - 所有主要資料頁面都有 loading、empty、error 狀態，未授權會回到登入頁。
@@ -91,4 +91,4 @@ npm audit
 
 ### 畫面沒有遙測
 
-設備建立後仍需透過 MQTT 模擬器或 REST API 寫入量測。請依 `MQTT_DEVELOPMENT.md` 啟動 broker、API MQTT subscriber 與設備模擬器。
+確認設備選擇的通訊協定與資料來源一致。目前只有 `mqtt` adapter；MQTT 訊息不會寫入指派給其他協定的設備。設備建立後仍可使用 REST API 作為管理／測試寫入入口。請依 `MQTT_DEVELOPMENT.md` 啟動 broker、API MQTT subscriber 與設備模擬器。

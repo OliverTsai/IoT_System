@@ -11,6 +11,7 @@ export interface Device {
   id: string;
   externalId: string;
   name: string;
+  protocolKey: string;
   isActive: boolean;
   createdAtUtc: string;
   lastSeenAtUtc: string | null;
@@ -48,6 +49,25 @@ export interface ProblemDetails {
 export interface CreateDeviceInput {
   externalId: string;
   name: string;
+  protocolKey?: string;
+  protocolSettings?: Record<string, string | number>;
+}
+
+export interface DeviceProtocolField {
+  key: string;
+  displayName: string;
+  inputType: "text" | "number";
+  isRequired: boolean;
+  minimum: number | null;
+  maximum: number | null;
+  placeholder: string | null;
+}
+
+export interface DeviceProtocol {
+  key: string;
+  displayName: string;
+  fields: DeviceProtocolField[];
+  isDefault: boolean;
 }
 
 export type AlertType =

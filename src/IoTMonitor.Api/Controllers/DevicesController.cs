@@ -3,7 +3,9 @@ using IoTMonitor.Api.Contracts.Devices;
 using IoTMonitor.Api.Contracts.Telemetry;
 using IoTMonitor.Api.Data;
 using IoTMonitor.Api.Devices;
+using IoTMonitor.Api.Domain;
 using IoTMonitor.Api.Domain.Entities;
+using IoTMonitor.Api.Messaging.Protocols;
 using IoTMonitor.Api.Security;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -16,7 +18,8 @@ namespace IoTMonitor.Api.Controllers;
 [Route("api/devices")]
 public sealed class DevicesController(
     IoTMonitorDbContext dbContext,
-    TimeProvider timeProvider) : ControllerBase
+    TimeProvider timeProvider,
+    DeviceProtocolRegistry protocolRegistry) : ControllerBase
 {
     [HttpPost]
     [Authorize(Policy = SecurityPolicies.AdminOnly)]
@@ -28,6 +31,33 @@ public sealed class DevicesController(
         CancellationToken cancellationToken)
     {
         var externalId = request.ExternalId!.Trim();
+        var protocolKey = string.IsNullOrWhiteSpace(request.ProtocolKey)
+            ? DeviceProtocolKeys.Mqtt
+            : request.ProtocolKey.Trim();
+
+        if (!protocolRegistry.TryGetAdapter(protocolKey, out var protocolAdapter))
+        {
+            ModelState.AddModelError(
+                nameof(request.ProtocolKey),
+                $"Protocol '{protocolKey}' is not supported.");
+            return ValidationProblem(ModelState);
+        }
+
+        var settingsValidation = protocolRegistry.ValidateSettings(
+            protocolAdapter!,
+            request.ProtocolSettings);
+        if (!settingsValidation.IsValid)
+        {
+            foreach (var (key, errors) in settingsValidation.Errors)
+            {
+                foreach (var error in errors)
+                {
+                    ModelState.AddModelError(key, error);
+                }
+            }
+
+            return ValidationProblem(ModelState);
+        }
 
         if (await dbContext.Devices.AnyAsync(
                 device => device.ExternalId == externalId,
@@ -41,6 +71,8 @@ public sealed class DevicesController(
             Id = Guid.NewGuid(),
             ExternalId = externalId,
             Name = request.Name!.Trim(),
+            ProtocolKey = protocolKey,
+            ProtocolSettingsJson = settingsValidation.NormalizedSettingsJson!,
             IsActive = true,
             CreatedAtUtc = timeProvider.GetUtcNow().UtcDateTime
         };
@@ -79,6 +111,7 @@ public sealed class DevicesController(
                 device.Id,
                 device.ExternalId,
                 device.Name,
+                device.ProtocolKey,
                 device.IsActive,
                 device.CreatedAtUtc,
                 LastSeenAtUtc = device.TelemetryReadings
@@ -92,6 +125,7 @@ public sealed class DevicesController(
                 device.Id,
                 device.ExternalId,
                 device.Name,
+                device.ProtocolKey,
                 device.IsActive,
                 device.CreatedAtUtc,
                 device.LastSeenAtUtc,
@@ -146,6 +180,7 @@ public sealed class DevicesController(
             device.Id,
             device.ExternalId,
             device.Name,
+            device.ProtocolKey,
             device.IsActive,
             device.CreatedAtUtc,
             lastSeenAtUtc,
@@ -223,6 +258,7 @@ public sealed class DevicesController(
             device.Id,
             device.ExternalId,
             device.Name,
+            device.ProtocolKey,
             device.IsActive,
             device.CreatedAtUtc,
             lastSeenAtUtc,

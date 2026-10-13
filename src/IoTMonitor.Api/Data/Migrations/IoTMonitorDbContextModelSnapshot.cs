@@ -159,11 +159,29 @@ namespace IoTMonitor.Api.Data.Migrations
                         .HasColumnType("character varying(200)")
                         .HasColumnName("name");
 
+                    b.Property<string>("ProtocolKey")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasDefaultValue("mqtt")
+                        .HasColumnName("protocol_key");
+
+                    b.Property<string>("ProtocolSettingsJson")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("protocol_settings")
+                        .HasDefaultValueSql("'{}'::jsonb");
+
                     b.HasKey("Id");
 
                     b.HasIndex("ExternalId")
                         .IsUnique()
                         .HasDatabaseName("ux_devices_external_id");
+
+                    b.HasIndex("ProtocolKey", "IsActive")
+                        .HasDatabaseName("ix_devices_protocol_key_is_active");
 
                     b.ToTable("devices", (string)null);
                 });

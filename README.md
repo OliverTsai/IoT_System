@@ -9,6 +9,7 @@
 - ASP.NET Core 10 Web API、EF Core 10、PostgreSQL migration 與一致的 Problem Details。
 - Vue 3、TypeScript、Vite、Vue Router，以及桌面／平板／手機 RWD。
 - MQTT QoS 1 遙測接收、設備模擬器、payload 驗證、重連與基本 message ID 去重。
+- 可註冊的通訊協定 adapter／registry；Admin 建立設備時由後端目錄選擇協定，既有設備預設為 MQTT。
 - 依最近 30 秒遙測判定設備運作狀態，並支援明確設定同 Wi-Fi 手機連入本機 MQTT broker。
 - 溫濕度 Warning／Critical 告警、查詢、篩選及冪等確認。
 - SignalR 即時遙測與告警；斷線後自動重連並以 REST 補抓缺口。
@@ -21,7 +22,7 @@
 ```mermaid
 flowchart LR
     Simulator[.NET Device Simulator] -->|MQTT QoS 1| Broker[Eclipse Mosquitto]
-    Broker -->|devices/+/telemetry| Api[ASP.NET Core API]
+    Broker -->|devices/+/telemetry| Api[ASP.NET Core protocol adapter]
     Api --> Database[(PostgreSQL)]
     Api -->|SignalR| Proxy[Nginx HTTPS]
     Browser[Vue 3 Browser UI] -->|REST / Cookie / CSRF| Proxy
@@ -118,6 +119,7 @@ docker compose down
 |---|---|---|
 | `POST` | `/api/auth/login` | Cookie 登入。 |
 | `GET/POST` | `/api/devices` | 查詢／建立設備。 |
+| `GET` | `/api/device-protocols` | 取得可選協定與非敏感設定欄位。 |
 | `GET/POST` | `/api/devices/{id}/telemetry` | 查詢／寫入遙測。 |
 | `GET` | `/api/alerts` | 分頁篩選告警。 |
 | `PATCH` | `/api/alerts/{id}/acknowledge` | 確認告警。 |
@@ -180,7 +182,7 @@ PostgreSQL 完整整合測試需要設定 `IOT_MONITOR_TEST_CONNECTION_STRING`�
 
 ```text
 src/
-  IoTMonitor.Api/              ASP.NET Core API、MQTT worker、SignalR
+  IoTMonitor.Api/              ASP.NET Core API、protocol adapters、SignalR
   IoTMonitor.DeviceSimulator/  MQTT 設備模擬器
   iot-monitor-web/             Vue 3 前端與 Nginx
 tests/
@@ -199,6 +201,7 @@ docs/                          架構、開發與階段交接文件
 - [Authentication 與安全](docs/AUTHENTICATION.md)
 - [Vue 前端](docs/FRONTEND_DEVELOPMENT.md)
 - [MQTT 與模擬器](docs/MQTT_DEVELOPMENT.md)
+- [通訊協定擴充架構](docs/PROTOCOL_DEVELOPMENT.md)
 - [告警與 SignalR](docs/ALERTS_REALTIME.md)
 - [實作階段與驗收條件](docs/IMPLEMENTATION_PLAN.md)
 - [進度與 AI 交接](docs/PROGRESS.md)

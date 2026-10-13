@@ -25,8 +25,15 @@ Content-Type: application/json
 
 {
   "externalId": "factory-01-temperature",
-  "name": "Factory 01 temperature sensor"
+  "name": "Factory 01 temperature sensor",
+  "protocolKey": "mqtt",
+  "protocolSettings": {}
 }
+
+###
+
+GET {{IoTMonitorApi_HostAddress}}/api/device-protocols
+Accept: application/json
 
 ###
 

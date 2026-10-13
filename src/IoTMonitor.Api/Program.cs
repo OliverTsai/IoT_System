@@ -6,6 +6,7 @@ using IoTMonitor.Api.Domain.Entities;
 using IoTMonitor.Api.Domain.Enums;
 using IoTMonitor.Api.HealthChecks;
 using IoTMonitor.Api.Messaging.Mqtt;
+using IoTMonitor.Api.Messaging.Protocols;
 using IoTMonitor.Api.Realtime;
 using IoTMonitor.Api.Security;
 using IoTMonitor.Api.TelemetryProcessing;
@@ -191,7 +192,9 @@ builder.Services
 builder.Services.AddSingleton<MqttTelemetryMessageParser>();
 builder.Services.AddSingleton<ITelemetryDeduplicator, TelemetryDeduplicator>();
 builder.Services.AddSingleton<MqttTelemetryProcessor>();
-builder.Services.AddHostedService<MqttTelemetryBackgroundService>();
+builder.Services.AddSingleton<IDeviceTelemetryProtocolAdapter, MqttTelemetryProtocolAdapter>();
+builder.Services.AddSingleton<DeviceProtocolRegistry>();
+builder.Services.AddHostedService<ProtocolIngestionCoordinator>();
 builder.Services.AddSingleton<AlertRuleEvaluator>();
 builder.Services.AddSingleton<MonitoringEventPublisher>();
 builder.Services.AddScoped<TelemetryIngestionService>();

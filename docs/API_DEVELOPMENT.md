@@ -105,6 +105,7 @@ Cookie 登入、角色權限、Admin bootstrap 與 CSRF 操作請參考 [`AUTHEN
 | Method | Path | 說明 |
 |---|---|---|
 | `POST` | `/api/devices` | Admin 建立設備；`externalId` 不可重複。 |
+| `GET` | `/api/device-protocols` | 已登入使用者取得支援協定與非敏感設定欄位。 |
 | `GET` | `/api/devices?page=1&pageSize=20` | 已登入使用者分頁取得設備列表。 |
 | `GET` | `/api/devices/{deviceId}` | 已登入使用者取得設備與最新一筆遙測。 |
 | `PATCH` | `/api/devices/{deviceId}/status` | Admin 啟用或停用設備。 |
@@ -117,3 +118,5 @@ Cookie 登入、角色權限、Admin bootstrap 與 CSRF 操作請參考 [`AUTHEN
 列表端點的 `page` 從 1 開始，`pageSize` 允許 1 到 100。遙測歷史可以使用 ISO 8601 格式的 `fromUtc` 與 `toUtc`，範圍包含起訖時間。
 
 溫度允許 -100 至 200°C、濕度允許 0 至 100%。`recordedAtUtc` 應使用含時區的 ISO 8601 格式，系統會轉換為 UTC，且不可超過伺服器目前時間五分鐘以上。驗證錯誤、找不到設備與重複識別碼會分別回傳 400、404、409 的 Problem Details。
+
+建立設備可另外傳入 `protocolKey` 與 `protocolSettings`。兩者省略時維持向後相容並使用 `mqtt` 與空設定；未知協定或不符合 adapter 規則的設定會回傳 400。設備 response 會回傳 `protocolKey`，但不回傳保存的設定內容。架構與新增 adapter 的規則請參考 [`PROTOCOL_DEVELOPMENT.md`](PROTOCOL_DEVELOPMENT.md)。

@@ -6,6 +6,7 @@ import type {
   CreateDeviceInput,
   Device,
   DeviceDetails,
+  DeviceProtocol,
   PagedResponse,
   ProblemDetails,
   Telemetry,
@@ -149,6 +150,10 @@ export const apiClient = {
 
   getDevice(deviceId: string): Promise<DeviceDetails> {
     return request<DeviceDetails>(`/api/devices/${encodeURIComponent(deviceId)}`);
+  },
+
+  getDeviceProtocols(): Promise<DeviceProtocol[]> {
+    return request<DeviceProtocol[]>("/api/device-protocols");
   },
 
   createDevice(input: CreateDeviceInput): Promise<Device> {

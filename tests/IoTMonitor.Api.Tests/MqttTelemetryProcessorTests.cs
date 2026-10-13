@@ -5,9 +5,12 @@ using IoTMonitor.Api.Contracts.Common;
 using IoTMonitor.Api.Contracts.Alerts;
 using IoTMonitor.Api.Contracts.Devices;
 using IoTMonitor.Api.Contracts.Telemetry;
+using IoTMonitor.Api.Data;
+using IoTMonitor.Api.Domain.Entities;
 using IoTMonitor.Api.Domain.Enums;
 using IoTMonitor.Api.Messaging.Mqtt;
 using IoTMonitor.Api.Tests.Infrastructure;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace IoTMonitor.Api.Tests;
@@ -133,6 +136,45 @@ public sealed class MqttTelemetryProcessorTests(PostgreSqlApiFactory factory)
             cancellationToken);
         Assert.NotNull(history);
         Assert.Equal(0, history.TotalCount);
+    }
+
+    [Fact(Skip = DatabaseSkipReason, SkipUnless = nameof(IsDatabaseConfigured))]
+    public async Task ProcessAsync_WithDeviceAssignedToAnotherProtocol_RejectsWithoutWriting()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var externalId = $"other-protocol-{Guid.NewGuid():N}";
+        var deviceId = Guid.NewGuid();
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var dbContext = scope.ServiceProvider.GetRequiredService<IoTMonitorDbContext>();
+            dbContext.Devices.Add(new Device
+            {
+                Id = deviceId,
+                ExternalId = externalId,
+                Name = "Non-MQTT test device",
+                ProtocolKey = "test-protocol",
+                ProtocolSettingsJson = "{}",
+                IsActive = true,
+                CreatedAtUtc = factory.Clock.GetUtcNow().UtcDateTime
+            });
+            await dbContext.SaveChangesAsync(cancellationToken);
+        }
+
+        var processor = factory.Services.GetRequiredService<MqttTelemetryProcessor>();
+        var result = await processor.ProcessAsync(
+            $"devices/{externalId}/telemetry",
+            CreatePayload(Guid.NewGuid(), 20m, 50m),
+            cancellationToken);
+
+        Assert.Equal(TelemetryProcessingStatus.Rejected, result.Status);
+        Assert.Contains("not assigned to the MQTT protocol", result.Detail);
+
+        await using var verificationScope = factory.Services.CreateAsyncScope();
+        var verificationContext = verificationScope.ServiceProvider
+            .GetRequiredService<IoTMonitorDbContext>();
+        Assert.False(await verificationContext.Telemetry.AnyAsync(
+            telemetry => telemetry.DeviceId == deviceId,
+            cancellationToken));
     }
 
     private static async Task<DeviceResponse> CreateDeviceAsync(

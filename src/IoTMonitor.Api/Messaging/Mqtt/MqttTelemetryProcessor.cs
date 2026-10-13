@@ -1,4 +1,5 @@
 using IoTMonitor.Api.Data;
+using IoTMonitor.Api.Domain;
 using IoTMonitor.Api.TelemetryProcessing;
 using Microsoft.EntityFrameworkCore;
 
@@ -52,6 +53,19 @@ public sealed class MqttTelemetryProcessor(
             logger.LogWarning(
                 "Rejected MQTT telemetry for unknown device {ExternalDeviceId}",
                 message.ExternalDeviceId);
+            return new TelemetryProcessingResult(TelemetryProcessingStatus.Rejected, detail);
+        }
+
+        if (!string.Equals(
+                device.ProtocolKey,
+                DeviceProtocolKeys.Mqtt,
+                StringComparison.Ordinal))
+        {
+            const string detail = "The device is not assigned to the MQTT protocol.";
+            logger.LogWarning(
+                "Rejected MQTT telemetry for device {ExternalDeviceId} assigned to protocol {ProtocolKey}",
+                message.ExternalDeviceId,
+                device.ProtocolKey);
             return new TelemetryProcessingResult(TelemetryProcessingStatus.Rejected, detail);
         }
 

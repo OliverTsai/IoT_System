@@ -8,6 +8,10 @@ public sealed class Device
 
     public required string Name { get; set; }
 
+    public string ProtocolKey { get; set; } = DeviceProtocolKeys.Mqtt;
+
+    public string ProtocolSettingsJson { get; set; } = "{}";
+
     public bool IsActive { get; set; } = true;
 
     public DateTime CreatedAtUtc { get; set; }

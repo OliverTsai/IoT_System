@@ -2,7 +2,13 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from "vue";
 import { RouterLink } from "vue-router";
 import { ApiError, apiClient } from "../api/client";
-import type { Device, PagedResponse, Telemetry } from "../api/types";
+import type {
+  Device,
+  DeviceProtocol,
+  DeviceProtocolField,
+  PagedResponse,
+  Telemetry,
+} from "../api/types";
 import StatusBadge from "../components/StatusBadge.vue";
 import UiState from "../components/UiState.vue";
 import { monitoringRealtime } from "../realtime/monitoring";
@@ -18,13 +24,43 @@ const errorMessage = ref("");
 const createOpen = ref(false);
 const creating = ref(false);
 const createError = ref("");
-const form = reactive({ externalId: "", name: "" });
+const protocols = ref<DeviceProtocol[]>([]);
+const protocolsLoading = ref(true);
+const protocolsError = ref("");
+const form = reactive<{
+  externalId: string;
+  name: string;
+  protocolKey: string;
+  protocolSettings: Record<string, string | number>;
+}>({ externalId: "", name: "", protocolKey: "", protocolSettings: {} });
 const nowMilliseconds = ref(Date.now());
 let unsubscribe: () => void = () => undefined;
 let presenceTimer: ReturnType<typeof setInterval> | null = null;
 
 const devices = computed(() => response.value?.items ?? []);
+const selectedProtocol = computed(() =>
+  protocols.value.find((protocol) => protocol.key === form.protocolKey) ?? null,
+);
 const isAdmin = authStore.isAdmin;
+
+async function loadProtocols(): Promise<void> {
+  protocolsLoading.value = true;
+  protocolsError.value = "";
+  try {
+    protocols.value = await apiClient.getDeviceProtocols();
+    if (!form.protocolKey) {
+      form.protocolKey = protocols.value.find((protocol) => protocol.isDefault)?.key
+        ?? protocols.value[0]?.key
+        ?? "";
+    }
+  } catch (error) {
+    protocolsError.value = error instanceof ApiError
+      ? error.message
+      : "暫時無法讀取支援的通訊協定。";
+  } finally {
+    protocolsLoading.value = false;
+  }
+}
 
 async function loadDevices(): Promise<void> {
   loading.value = true;
@@ -51,6 +87,27 @@ function closeCreate(): void {
   createError.value = "";
   form.externalId = "";
   form.name = "";
+  form.protocolKey = protocols.value.find((protocol) => protocol.isDefault)?.key
+    ?? protocols.value[0]?.key
+    ?? "";
+  form.protocolSettings = {};
+}
+
+function changeProtocol(event: Event): void {
+  form.protocolKey = (event.target as HTMLSelectElement).value;
+  form.protocolSettings = {};
+}
+
+function updateProtocolSetting(field: DeviceProtocolField, event: Event): void {
+  const value = (event.target as HTMLInputElement).value;
+  form.protocolSettings[field.key] = field.inputType === "number" && value !== ""
+    ? Number(value)
+    : value;
+}
+
+function protocolLabel(protocolKey: string): string {
+  return protocols.value.find((protocol) => protocol.key === protocolKey)?.displayName
+    ?? protocolKey.toUpperCase();
 }
 
 async function createDevice(): Promise<void> {
@@ -58,8 +115,8 @@ async function createDevice(): Promise<void> {
   const externalId = form.externalId.trim();
   const name = form.name.trim();
 
-  if (!externalId || !name) {
-    createError.value = "設備識別碼與名稱皆為必填。";
+  if (!externalId || !name || !form.protocolKey) {
+    createError.value = "設備識別碼、名稱與通訊協定皆為必填。";
     return;
   }
 
@@ -68,9 +125,28 @@ async function createDevice(): Promise<void> {
     return;
   }
 
+  const missingField = selectedProtocol.value?.fields.find(
+    (field) => field.isRequired &&
+      (form.protocolSettings[field.key] === undefined ||
+        form.protocolSettings[field.key] === ""),
+  );
+  if (missingField) {
+    createError.value = `${missingField.displayName}為必填。`;
+    return;
+  }
+
+  const protocolSettings = Object.fromEntries(
+    Object.entries(form.protocolSettings).filter(([, value]) => value !== ""),
+  );
+
   creating.value = true;
   try {
-    await apiClient.createDevice({ externalId, name });
+    await apiClient.createDevice({
+      externalId,
+      name,
+      protocolKey: form.protocolKey,
+      protocolSettings,
+    });
     page.value = 1;
     closeCreate();
     await loadDevices();
@@ -116,7 +192,7 @@ onMounted(() => {
   presenceTimer = setInterval(() => {
     nowMilliseconds.value = Date.now();
   }, 1_000);
-  void loadDevices();
+  void Promise.all([loadDevices(), loadProtocols()]);
 });
 
 onBeforeUnmount(() => {
@@ -137,7 +213,7 @@ onBeforeUnmount(() => {
         v-if="isAdmin"
         class="button button--primary"
         type="button"
-        @click="createOpen = !createOpen"
+        @click="createOpen ? closeCreate() : createOpen = true"
       >
         <span aria-hidden="true">＋</span>
         新增設備
@@ -184,6 +260,40 @@ onBeforeUnmount(() => {
             :disabled="creating"
           >
         </label>
+        <label class="field">
+          <span>通訊協定</span>
+          <select
+            :value="form.protocolKey"
+            :disabled="creating || protocolsLoading || protocols.length === 0"
+            required
+            @change="changeProtocol"
+          >
+            <option
+              v-for="protocol in protocols"
+              :key="protocol.key"
+              :value="protocol.key"
+            >
+              {{ protocol.displayName }}
+            </option>
+          </select>
+        </label>
+        <label
+          v-for="field in selectedProtocol?.fields ?? []"
+          :key="field.key"
+          class="field"
+        >
+          <span>{{ field.displayName }}</span>
+          <input
+            :value="form.protocolSettings[field.key] ?? ''"
+            :type="field.inputType"
+            :required="field.isRequired"
+            :min="field.minimum ?? undefined"
+            :max="field.maximum ?? undefined"
+            :placeholder="field.placeholder ?? undefined"
+            :disabled="creating"
+            @input="updateProtocolSetting(field, $event)"
+          >
+        </label>
         <button
           class="button button--primary inline-form__submit"
           type="submit"
@@ -192,6 +302,26 @@ onBeforeUnmount(() => {
           {{ creating ? "建立中…" : "建立設備" }}
         </button>
       </form>
+      <p
+        v-if="protocolsLoading"
+        class="form-hint"
+      >
+        正在讀取支援的通訊協定…
+      </p>
+      <p
+        v-else-if="protocolsError"
+        class="form-error"
+        role="alert"
+      >
+        {{ protocolsError }}
+        <button
+          class="text-link"
+          type="button"
+          @click="loadProtocols"
+        >
+          重試
+        </button>
+      </p>
       <p
         v-if="createError"
         class="form-error"
@@ -231,6 +361,7 @@ onBeforeUnmount(() => {
               <tr>
                 <th>設備</th>
                 <th>識別碼</th>
+                <th>通訊協定</th>
                 <th>連線狀態</th>
                 <th>管理狀態</th>
                 <th>最後回報</th>
@@ -257,6 +388,9 @@ onBeforeUnmount(() => {
                 </td>
                 <td data-label="識別碼">
                   <code>{{ device.externalId }}</code>
+                </td>
+                <td data-label="通訊協定">
+                  {{ protocolLabel(device.protocolKey) }}
                 </td>
                 <td data-label="連線狀態">
                   <StatusBadge

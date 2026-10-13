@@ -166,7 +166,7 @@ onBeforeUnmount(() => {
           <div>
             <span class="eyebrow">{{ device.externalId }}</span>
             <h1>{{ device.name }}</h1>
-            <p>建立於 {{ formatDateTime(device.createdAtUtc) }}</p>
+            <p>{{ device.protocolKey.toUpperCase() }} · 建立於 {{ formatDateTime(device.createdAtUtc) }}</p>
           </div>
         </div>
         <div class="device-heading__actions">

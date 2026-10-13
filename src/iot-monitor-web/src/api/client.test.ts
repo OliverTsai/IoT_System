@@ -61,6 +61,7 @@ describe("apiClient", () => {
         id: "device-1",
         externalId: "sensor-01",
         name: "Sensor 01",
+        protocolKey: "mqtt",
         isActive: true,
         createdAtUtc: "2026-10-01T08:00:00Z",
       }, 201));
@@ -72,6 +73,21 @@ describe("apiClient", () => {
     expect(fetchMock).toHaveBeenCalledTimes(4);
     const retryOptions = fetchMock.mock.calls[3]?.[1];
     expect(new Headers(retryOptions?.headers).get("X-CSRF-TOKEN")).toBe("fresh-token");
+  });
+
+  it("loads device protocols from the server catalog", async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+      jsonResponse([{ key: "mqtt", displayName: "MQTT", fields: [], isDefault: true }]),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { apiClient } = await import("./client");
+    const protocols = await apiClient.getDeviceProtocols();
+
+    expect(protocols).toEqual([
+      { key: "mqtt", displayName: "MQTT", fields: [], isDefault: true },
+    ]);
+    expect(String(fetchMock.mock.calls[0]?.[0])).toContain("/api/device-protocols");
   });
 
   it("queries and acknowledges alerts through the protected API", async () => {

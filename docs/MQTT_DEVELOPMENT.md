@@ -9,7 +9,7 @@ IoTMonitor.DeviceSimulator
 Eclipse Mosquitto ── devices/{externalDeviceId}/telemetry
         │ subscribe
         ▼
-IoTMonitor.Api BackgroundService ──► PostgreSQL ──► REST API
+IoTMonitor.Api MQTT adapter ───────► PostgreSQL ──► REST API
               │                         │
               └── 告警規則 ────────────┴──► SignalR ──► Vue
 ```
@@ -58,7 +58,7 @@ Payload：
 - `messageId` 必須是非空 UUID，用於基本重複訊息判斷。
 - 溫度允許 -100 至 200°C，濕度允許 0 至 100%。
 - `recordedAtUtc` 會轉換為 UTC，且不可超過伺服器目前時間五分鐘以上。
-- Topic 中的設備必須存在且為啟用狀態。
+- Topic 中的設備必須存在、為啟用狀態，且 `protocolKey` 必須是 `mqtt`。
 - Payload 上限為 4 KiB；無效 JSON、topic、設備或數值只會留下不含 payload 的診斷 log，不會寫入資料庫。
 
 API 會在記憶體中保留最近 10 分鐘、最多 10,000 組 `(externalDeviceId, messageId)`。這能處理單一 API 執行個體常見的 QoS 1 重送；API 重啟或未來水平擴充後，需改用資料庫唯一鍵或分散式儲存，才能提供跨執行個體去重。
@@ -89,7 +89,7 @@ Windows 防火牆只應允許私人網路的 TCP 1883；不要設定路由器 po
 
 接著：
 
-1. 由 Admin 在管理頁面建立 external id 為 `phone-demo-001` 的啟用設備。
+1. 由 Admin 在管理頁面建立 external id 為 `phone-demo-001`、通訊協定為 MQTT 的啟用設備。
 2. 手機安裝可發布 MQTT 訊息的 client，使用下列連線設定：
 
    ```text
@@ -139,6 +139,8 @@ $apiBase = "https://localhost:7080"
   $body = @{
     externalId = $externalId
     name = "Simulated device $_"
+    protocolKey = "mqtt"
+    protocolSettings = @{}
   } | ConvertTo-Json
 
   Invoke-RestMethod `

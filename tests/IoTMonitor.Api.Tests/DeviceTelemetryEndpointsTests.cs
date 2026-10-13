@@ -1,9 +1,11 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
 using IoTMonitor.Api.Contracts.Common;
 using IoTMonitor.Api.Contracts.Devices;
 using IoTMonitor.Api.Contracts.Telemetry;
 using IoTMonitor.Api.Domain.Enums;
+using IoTMonitor.Api.Messaging.Protocols;
 using IoTMonitor.Api.Tests.Infrastructure;
 using Microsoft.AspNetCore.Mvc;
 
@@ -35,6 +37,7 @@ public sealed class DeviceTelemetryEndpointsTests(PostgreSqlApiFactory factory)
         var created = await createResponse.Content.ReadFromJsonAsync<DeviceResponse>(cancellationToken);
         Assert.NotNull(created);
         Assert.Equal(externalId, created.ExternalId);
+        Assert.Equal("mqtt", created.ProtocolKey);
         Assert.True(created.IsActive);
         Assert.Null(created.LastSeenAtUtc);
         Assert.False(created.IsOnline);
@@ -138,6 +141,53 @@ public sealed class DeviceTelemetryEndpointsTests(PostgreSqlApiFactory factory)
     }
 
     [Fact(Skip = DatabaseSkipReason, SkipUnless = nameof(IsDatabaseConfigured))]
+    public async Task DeviceProtocols_ListsMqttAndValidatesDeviceProtocolSettings()
+    {
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var viewer = await factory.CreateAuthenticatedClientAsync(
+            UserRole.Viewer,
+            cancellationToken);
+        var protocols = await viewer.GetFromJsonAsync<DeviceProtocolDescriptor[]>(
+            "/api/device-protocols",
+            cancellationToken);
+        var mqtt = Assert.Single(protocols!);
+        Assert.Equal("mqtt", mqtt.Key);
+        Assert.True(mqtt.IsDefault);
+        Assert.Empty(mqtt.Fields);
+
+        using var admin = await factory.CreateAuthenticatedClientAsync(
+            UserRole.Admin,
+            cancellationToken);
+        var explicitMqtt = await admin.PostAsJsonAsync(
+            "/api/devices",
+            new CreateDeviceRequest(
+                NewExternalId(),
+                "Explicit MQTT sensor",
+                "mqtt",
+                JsonDocument.Parse("{}").RootElement.Clone()),
+            cancellationToken);
+        var unknownProtocol = await admin.PostAsJsonAsync(
+            "/api/devices",
+            new CreateDeviceRequest(NewExternalId(), "Unknown protocol sensor", "unknown"),
+            cancellationToken);
+        var invalidMqttSettings = await admin.PostAsJsonAsync(
+            "/api/devices",
+            new CreateDeviceRequest(
+                NewExternalId(),
+                "Invalid MQTT settings sensor",
+                "mqtt",
+                JsonDocument.Parse("""{"host":"device.example"}""").RootElement.Clone()),
+            cancellationToken);
+
+        Assert.Equal(HttpStatusCode.Created, explicitMqtt.StatusCode);
+        var created = await explicitMqtt.Content.ReadFromJsonAsync<DeviceResponse>(
+            cancellationToken);
+        Assert.Equal("mqtt", created!.ProtocolKey);
+        Assert.Equal(HttpStatusCode.BadRequest, unknownProtocol.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, invalidMqttSettings.StatusCode);
+    }
+
+    [Fact(Skip = DatabaseSkipReason, SkipUnless = nameof(IsDatabaseConfigured))]
     public async Task TelemetryWorkflow_WritesAndQueriesLatestAndHistory()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
@@ -213,7 +263,11 @@ public sealed class DeviceTelemetryEndpointsTests(PostgreSqlApiFactory factory)
             $"/api/devices/{device.Id}",
             cancellationToken);
         Assert.NotNull(onlineDetails);
-        Assert.Equal(telemetry.ReceivedAtUtc, onlineDetails.LastSeenAtUtc);
+        Assert.NotNull(onlineDetails.LastSeenAtUtc);
+        Assert.Equal(
+            telemetry.ReceivedAtUtc,
+            onlineDetails.LastSeenAtUtc.Value,
+            TimeSpan.FromMicroseconds(1));
         Assert.True(onlineDetails.IsOnline);
 
         var onlineList = await client.GetFromJsonAsync<PagedResponse<DeviceResponse>>(
@@ -222,7 +276,11 @@ public sealed class DeviceTelemetryEndpointsTests(PostgreSqlApiFactory factory)
         var listedDevice = Assert.Single(
             onlineList!.Items,
             candidate => candidate.Id == device.Id);
-        Assert.Equal(telemetry.ReceivedAtUtc, listedDevice.LastSeenAtUtc);
+        Assert.NotNull(listedDevice.LastSeenAtUtc);
+        Assert.Equal(
+            telemetry.ReceivedAtUtc,
+            listedDevice.LastSeenAtUtc.Value,
+            TimeSpan.FromMicroseconds(1));
         Assert.True(listedDevice.IsOnline);
 
         factory.Clock.Advance(TimeSpan.FromSeconds(31));
